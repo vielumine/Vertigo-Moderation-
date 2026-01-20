@@ -71,6 +71,41 @@ All moderation commands that check staff immunity:
 
 ---
 
+## Change 4: Command Usage Error Messages
+
+### Overview
+Enhanced error handling to automatically show command usage when commands are used incorrectly.
+
+### Files Modified
+- `vertigo/main.py` - Enhanced `on_command_error` event handler
+
+### Key Changes
+1. **Missing arguments** → Shows command usage in error message
+2. **Invalid arguments** → Shows command usage in error message
+3. **Dynamic prefix** → Usage shows server's custom prefix
+4. **Code block format** → Usage displayed in clean code block
+
+### Error Types Enhanced
+- `MissingRequiredArgument` - When parameters are missing
+- `BadArgument` - When wrong parameter type is provided
+
+### Example Output
+```
+❌ Missing Arguments
+Missing required argument: member
+
+Usage:
+!warn <member> <reason>
+```
+
+### Benefits
+- Users immediately see correct command format
+- Self-service error resolution
+- Works automatically for all commands
+- Adapts to custom server prefixes
+
+---
+
 ## Testing Checklist
 
 ### Staff Flag System
@@ -95,12 +130,21 @@ All moderation commands that check staff immunity:
 - [ ] Admins can still moderate staff members normally
 - [ ] Works with all moderation commands (warn, kick, ban, etc.)
 
+### Command Usage Error Messages
+- [ ] Use command with missing arguments → Shows usage
+- [ ] Use command with invalid arguments → Shows usage
+- [ ] Verify usage displays correct command format
+- [ ] Test with custom server prefix
+- [ ] Verify usage is shown in code block format
+- [ ] Test with multiple different commands
+
 ---
 
 ## Documentation Files Created
 - `CHANGES.md` - Details of staff flag system update
 - `LOCK_UNLOCK_CHANGES.md` - Details of lock/unlock changes
 - `STAFF_IMMUNITY_CHANGES.md` - Details of staff immunity enhancement
+- `COMMAND_USAGE_ENHANCEMENT.md` - Details of command usage error messages
 - `IMPLEMENTATION_SUMMARY.md` - Technical implementation details
 - `COMPLETE_CHANGES_SUMMARY.md` - This file
 
