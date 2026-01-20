@@ -153,6 +153,14 @@ async def safe_dm(user: discord.abc.User, *, content: str | None = None, embed: 
         logger.exception("Failed to DM user %s", getattr(user, "id", "?"))
 
 
+async def add_loading_reaction(message: discord.Message) -> None:
+    """Add a loading reaction (🔃) to indicate processing."""
+    try:
+        await message.add_reaction("🔃")
+    except Exception:
+        logger.debug("Failed to add loading reaction")
+
+
 def make_embed(*, action: str, title: str, description: str | None = None) -> discord.Embed:
     embed = discord.Embed(
         title=title,

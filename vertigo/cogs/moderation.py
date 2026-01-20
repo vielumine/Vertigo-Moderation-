@@ -512,6 +512,9 @@ class ModerationCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
+
         ok = 0
         failed = 0
         for m in members:
@@ -544,6 +547,9 @@ class ModerationCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
+
         ok = 0
         failed = 0
         for m in members:
@@ -574,6 +580,9 @@ class ModerationCog(commands.Cog):
         members = await self._parse_members_csv(ctx, users)
         seconds = parse_duration(duration)
         until = discord.utils.utcnow() + timedelta(seconds=seconds)
+
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
 
         ok = 0
         failed = 0

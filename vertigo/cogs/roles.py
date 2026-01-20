@@ -287,8 +287,12 @@ class RolesCog(commands.Cog):
     @require_level("head_mod")
     async def massrole(self, ctx: commands.Context, users: str, role: discord.Role) -> None:
         members = self._parse_members(ctx, users)
+        
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
+        
         ok, failed = await self._mass_role_op(ctx, members=members, role=role, add=True)
-        embed = make_embed(action="massrole", title="Mass Role Results", description=f"Assigned {role.mention}.\nSucceeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="massrole", title="📌 Mass Role Assignment Results", description=f"Assigned {role.mention}.\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
         await safe_delete(ctx.message)
 
@@ -298,8 +302,12 @@ class RolesCog(commands.Cog):
     @require_level("head_mod")
     async def massremoverole(self, ctx: commands.Context, users: str, role: discord.Role) -> None:
         members = self._parse_members(ctx, users)
+        
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
+        
         ok, failed = await self._mass_role_op(ctx, members=members, role=role, add=False)
-        embed = make_embed(action="massremoverole", title="Mass Remove Role Results", description=f"Removed {role.mention}.\nSucceeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="massremoverole", title="📌 Mass Role Removal Results", description=f"Removed {role.mention}.\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
         await safe_delete(ctx.message)
 
@@ -310,6 +318,10 @@ class RolesCog(commands.Cog):
     async def masstemprole(self, ctx: commands.Context, users: str, role: discord.Role, duration: str) -> None:
         seconds = parse_duration(duration)
         members = self._parse_members(ctx, users)
+        
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
+        
         ok = 0
         failed = 0
         for m in members:
@@ -319,7 +331,7 @@ class RolesCog(commands.Cog):
                 ok += 1
             except Exception:
                 failed += 1
-        embed = make_embed(action="masstemprole", title="Mass Temp Role Results", description=f"Assigned {role.mention} for {duration}.\nSucceeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="masstemprole", title="⏱️ Mass Temp Role Results", description=f"Assigned {role.mention} for {duration}.\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
         await safe_delete(ctx.message)
 
@@ -329,6 +341,10 @@ class RolesCog(commands.Cog):
     @require_level("head_mod")
     async def massremovetemp(self, ctx: commands.Context, users: str, role: discord.Role) -> None:
         members = self._parse_members(ctx, users)
+        
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
+        
         ok = 0
         failed = 0
         for m in members:
@@ -339,7 +355,7 @@ class RolesCog(commands.Cog):
                 ok += 1
             except Exception:
                 failed += 1
-        embed = make_embed(action="massremovetemp", title="Mass Remove Temp Role Results", description=f"Role: {role.mention}\nSucceeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="massremovetemp", title="⏱️ Mass Temp Role Removal Results", description=f"Role: {role.mention}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
         await safe_delete(ctx.message)
 
@@ -349,6 +365,10 @@ class RolesCog(commands.Cog):
     @require_level("head_mod")
     async def masspersistrole(self, ctx: commands.Context, users: str, role: discord.Role) -> None:
         members = self._parse_members(ctx, users)
+        
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
+        
         ok = 0
         failed = 0
         for m in members:
@@ -358,7 +378,7 @@ class RolesCog(commands.Cog):
                 ok += 1
             except Exception:
                 failed += 1
-        embed = make_embed(action="masspersistrole", title="Mass Persistent Role Results", description=f"Assigned {role.mention}.\nSucceeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="masspersistrole", title="📍 Mass Persist Role Results", description=f"Assigned {role.mention}.\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
         await safe_delete(ctx.message)
 
@@ -368,6 +388,10 @@ class RolesCog(commands.Cog):
     @require_level("head_mod")
     async def massremovepersist(self, ctx: commands.Context, users: str, role: discord.Role) -> None:
         members = self._parse_members(ctx, users)
+        
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
+        
         ok = 0
         failed = 0
         for m in members:
@@ -378,7 +402,7 @@ class RolesCog(commands.Cog):
                 ok += 1
             except Exception:
                 failed += 1
-        embed = make_embed(action="massremovepersist", title="Mass Remove Persistent Role Results", description=f"Role: {role.mention}\nSucceeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="massremovepersist", title="📍 Mass Persist Role Removal Results", description=f"Role: {role.mention}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
         await safe_delete(ctx.message)
 

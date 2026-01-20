@@ -88,9 +88,12 @@ class ChannelsCog(commands.Cog):
     async def massslow(self, ctx: commands.Context, channels: str, duration: str) -> None:
         seconds = parse_duration(duration)
         if seconds > 21600:
-            embed = make_embed(action="error", title="Too Long", description="Max slowmode is 6 hours (21600s).")
+            embed = make_embed(action="error", title="❌ Too Long", description="Max slowmode is 6 hours (21600s).")
             await ctx.send(embed=embed)
             return
+
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
 
         ok = 0
         failed = 0

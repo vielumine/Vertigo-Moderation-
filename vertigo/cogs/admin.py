@@ -154,9 +154,12 @@ class AdminCog(commands.Cog):
     async def lockchannels(self, ctx: commands.Context) -> None:
         settings = await self._settings(ctx.guild)  # type: ignore[arg-type]
         if not settings.lock_categories:
-            embed = make_embed(action="error", title="Not Configured", description="No lock categories set. Use !adminsetup.")
+            embed = make_embed(action="error", title="❌ Not Configured", description="No lock categories set. Use !adminsetup.")
             await ctx.send(embed=embed)
             return
+
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
 
         ok = 0
         failed = 0
@@ -184,9 +187,12 @@ class AdminCog(commands.Cog):
     async def unlockchannels(self, ctx: commands.Context) -> None:
         settings = await self._settings(ctx.guild)  # type: ignore[arg-type]
         if not settings.lock_categories:
-            embed = make_embed(action="error", title="Not Configured", description="No lock categories set. Use !adminsetup.")
+            embed = make_embed(action="error", title="❌ Not Configured", description="No lock categories set. Use !adminsetup.")
             await ctx.send(embed=embed)
             return
+
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
 
         ok = 0
         failed = 0

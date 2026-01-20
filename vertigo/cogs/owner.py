@@ -93,17 +93,20 @@ class OwnerCog(commands.Cog):
             return reaction.message.id == confirm.id and str(reaction.emoji) == "✅" and user.id == ctx.author.id
 
         try:
-            await self.bot.wait_for("reaction_add", check=check, timeout=30)
+           await self.bot.wait_for("reaction_add", check=check, timeout=30)
         except asyncio.TimeoutError:
-            await confirm.edit(content="Timed out.")
-            return
+           await confirm.edit(content="Timed out.")
+           return
+
+        # Add loading reaction for long-running operation
+        await confirm.add_reaction("🔃")
 
         deleted = 0
         while True:
-            batch = await channel.purge(limit=100)
-            deleted += len(batch)
-            if len(batch) < 100:
-                break
+           batch = await channel.purge(limit=100)
+           deleted += len(batch)
+           if len(batch) < 100:
+               break
 
         embed = make_embed(action="success", title="💣 Channel Nuked", description=f"Deleted **{deleted}** messages.")
         await ctx.send(embed=embed)
