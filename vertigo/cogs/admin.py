@@ -172,6 +172,17 @@ class AdminCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
+        if not settings.member_role_id:
+            embed = make_embed(action="error", title="❌ No Member Role", description="No member role configured. Use !setup to set a member role first.")
+            await ctx.send(embed=embed)
+            return
+
+        member_role = ctx.guild.get_role(settings.member_role_id)  # type: ignore[union-attr]
+        if not member_role:
+            embed = make_embed(action="error", title="❌ Role Not Found", description="Configured member role no longer exists. Use !setup to update.")
+            await ctx.send(embed=embed)
+            return
+
         # Add loading reaction for long-running operation
         await add_loading_reaction(ctx.message)
 
@@ -182,10 +193,10 @@ class AdminCog(commands.Cog):
             if not isinstance(category, discord.CategoryChannel):
                 continue
             for channel in category.text_channels:
-                overwrite = channel.overwrites_for(ctx.guild.default_role)  # type: ignore[union-attr]
+                overwrite = channel.overwrites_for(member_role)
                 overwrite.send_messages = False
                 try:
-                    await channel.set_permissions(ctx.guild.default_role, overwrite=overwrite, reason=f"lockchannels by {ctx.author}")
+                    await channel.set_permissions(member_role, overwrite=overwrite, reason=f"lockchannels by {ctx.author}")
                     ok += 1
                     await self.db.add_modlog(guild_id=ctx.guild.id, action_type="lock", user_id=None, moderator_id=ctx.author.id, target_id=channel.id, reason="lockchannels")  # type: ignore[union-attr]
                 except Exception:
@@ -205,6 +216,17 @@ class AdminCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
+        if not settings.member_role_id:
+            embed = make_embed(action="error", title="❌ No Member Role", description="No member role configured. Use !setup to set a member role first.")
+            await ctx.send(embed=embed)
+            return
+
+        member_role = ctx.guild.get_role(settings.member_role_id)  # type: ignore[union-attr]
+        if not member_role:
+            embed = make_embed(action="error", title="❌ Role Not Found", description="Configured member role no longer exists. Use !setup to update.")
+            await ctx.send(embed=embed)
+            return
+
         # Add loading reaction for long-running operation
         await add_loading_reaction(ctx.message)
 
@@ -215,10 +237,10 @@ class AdminCog(commands.Cog):
             if not isinstance(category, discord.CategoryChannel):
                 continue
             for channel in category.text_channels:
-                overwrite = channel.overwrites_for(ctx.guild.default_role)  # type: ignore[union-attr]
+                overwrite = channel.overwrites_for(member_role)
                 overwrite.send_messages = None
                 try:
-                    await channel.set_permissions(ctx.guild.default_role, overwrite=overwrite, reason=f"unlockchannels by {ctx.author}")
+                    await channel.set_permissions(member_role, overwrite=overwrite, reason=f"unlockchannels by {ctx.author}")
                     ok += 1
                     await self.db.add_modlog(guild_id=ctx.guild.id, action_type="unlock", user_id=None, moderator_id=ctx.author.id, target_id=channel.id, reason="unlockchannels")  # type: ignore[union-attr]
                 except Exception:
