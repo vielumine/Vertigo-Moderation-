@@ -62,7 +62,6 @@ EMBED_COLORS: dict[str, int] = {
     "imprison": EMBED_COLOR_DARK_RED,
     "terminate": EMBED_COLOR_DARK_RED,
     "flag": EMBED_COLOR_RED,
-    "massstrike": EMBED_COLOR_RED,
 
     # Gray embeds (Info/Secondary)
     "modlogs": EMBED_COLOR_GRAY,
@@ -104,6 +103,34 @@ def get_embed_color(action_type: str) -> int:
     """Return an embed color for a given action type."""
 
     return EMBED_COLORS.get(str(action_type).lower(), EMBED_COLOR_GRAY)
+
+
+# GIF URLs - Full GitHub links
+GIF_URLS: dict[str, str] = {
+    "WARN": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard.gif",
+    "WARN_REMOVED": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(11).gif",
+    "MUTE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(1).gif",
+    "UNMUTE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(12).gif",
+    "WARN_AND_MUTE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(2).gif",
+    "KICK": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(3).gif",
+    "BAN": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(4).gif",
+    "UNBAN": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(15).gif",
+    "STAFF_FLAG": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(5).gif",
+    "STAFF_UNFLAG": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(13).gif",
+    "STAFF_TERMINATE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(6).gif",
+    "ROLE_ASSIGNED": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(7).gif",
+    "ROLE_REMOVED": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(8).gif",
+    "TEMP_ROLE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(10).gif",
+    "PERSIST_ROLE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(9).gif",
+}
+
+
+def get_gif_url(gif_key: str) -> str:
+    """Return a full URL to a GIF asset.
+    
+    These assets are hosted on GitHub and can be used directly in embed thumbnails.
+    """
+    return GIF_URLS.get(gif_key.upper(), GIF_URLS["WARN"])
 
 
 # ---------------------------------------------------------------------------

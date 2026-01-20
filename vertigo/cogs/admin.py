@@ -54,8 +54,8 @@ class AdminCog(commands.Cog):
 
         embed = make_embed(
             action="flag",
-            title="Staff Flag",
-            description=f"Flagged {member.mention}.\nStrike: **{strike}/3**\nReason: {reason}\nID: `{flag_id}`",
+            title="🚩 Staff Flag",
+            description=f"👤 Flagged {member.mention}.\n📊 Strike: **{strike}/3**\n📝 Reason: {reason}\n📍 ID: `{flag_id}`",
         )
         embed, file = attach_gif(embed, gif_key="STAFF_FLAG")
         message = await ctx.send(embed=embed, file=file)
@@ -82,7 +82,7 @@ class AdminCog(commands.Cog):
     async def unflag(self, ctx: commands.Context, member: discord.Member, strike_id: int) -> None:
         await self.db.deactivate_staff_flag(guild_id=ctx.guild.id, flag_id=strike_id)  # type: ignore[union-attr]
 
-        embed = make_embed(action="unflag", title="Staff Unflag", description=f"Removed flag `{strike_id}` for {member.mention}.")
+        embed = make_embed(action="unflag", title="🚩 Flag Removed", description=f"📍 Removed flag `{strike_id}` for 👤 {member.mention}.")
         embed, file = attach_gif(embed, gif_key="STAFF_UNFLAG")
         message = await ctx.send(embed=embed, file=file)
 
@@ -139,10 +139,10 @@ class AdminCog(commands.Cog):
     @commands_channel_check()
     @require_admin()
     async def terminate(self, ctx: commands.Context, member: discord.Member, *, reason: str = "Terminated") -> None:
-        embed = make_embed(action="terminate", title="Terminating...", description=f"Target: {member.mention}")
+        embed = make_embed(action="terminate", title="⛔ Terminating...", description=f"👤 Target: {member.mention}")
         await ctx.send(embed=embed)
         await self._terminate(ctx, member, reason=reason)
-        confirm = make_embed(action="terminate", title="Staff Terminated", description=f"Terminated {member.mention}.")
+        confirm = make_embed(action="terminate", title="⛔ Staff Member Terminated", description=f"✅ Terminated 👤 {member.mention}.")
         confirm, file = attach_gif(confirm, gif_key="STAFF_TERMINATE")
         await ctx.send(embed=confirm, file=file)
         await safe_delete(ctx.message)
@@ -174,7 +174,7 @@ class AdminCog(commands.Cog):
                 except Exception:
                     failed += 1
 
-        embed = make_embed(action="lockchannels", title="Lock Channels", description=f"Locked: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="lockchannels", title="🔒 Categories Locked", description=f"✔️ Locked: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
 
     @commands.command(name="unlockchannels")
@@ -204,7 +204,7 @@ class AdminCog(commands.Cog):
                 except Exception:
                     failed += 1
 
-        embed = make_embed(action="unlockchannels", title="Unlock Channels", description=f"Unlocked: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="unlockchannels", title="🔓 Categories Unlocked", description=f"✔️ Unlocked: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
 
     @commands.command(name="scanacc")
@@ -214,15 +214,15 @@ class AdminCog(commands.Cog):
     async def scanacc(self, ctx: commands.Context, member: discord.Member) -> None:
         now = discord.utils.utcnow()
         age_days = (now - member.created_at).days
-        embed = make_embed(action="scanacc", title="Account Scan", description=f"User: {member.mention} ({member.id})")
-        embed.add_field(name="Account Age", value=f"{age_days} days", inline=True)
-        embed.add_field(name="New Account (< 7d)", value="Yes" if age_days < 7 else "No", inline=True)
+        embed = make_embed(action="scanacc", title="🔍 Account Scan", description=f"👤 User: {member.mention} ({member.id})")
+        embed.add_field(name="📅 Account Age", value=f"{age_days} days", inline=True)
+        embed.add_field(name="🆕 New Account (< 7d)", value="Yes" if age_days < 7 else "No", inline=True)
 
         # very lightweight alt check: same name prefix
         similar = [m for m in ctx.guild.members if m.id != member.id and m.name.lower().startswith(member.name.lower()[:4])]  # type: ignore[union-attr]
-        embed.add_field(name="Similar Usernames", value=str(len(similar)), inline=True)
+        embed.add_field(name="👥 Similar Usernames", value=str(len(similar)), inline=True)
         if age_days < 7 or len(similar) >= 3:
-            embed.add_field(name="Suspicious", value="Yes", inline=False)
+            embed.add_field(name="⚠️ Suspicious", value="Yes", inline=False)
         await ctx.send(embed=embed)
 
     @commands.command(name="stafflist")
@@ -247,9 +247,9 @@ class AdminCog(commands.Cog):
 
         pages: list[Page] = []
         for title, members in entries:
-            embed = make_embed(action="stafflist", title=title)
+            embed = make_embed(action="stafflist", title=f"👮 {title}")
             if members:
-                embed.description = "\n".join(f"{m} (`{m.id}`)" for m in members[:50])
+                embed.description = "\n".join(f"👤 {m} (`{m.id}`)" for m in members[:50])
             else:
                 embed.description = "None"
             pages.append(Page(embed=embed))
@@ -264,10 +264,10 @@ class AdminCog(commands.Cog):
     async def wasstaff(self, ctx: commands.Context, user: discord.User) -> None:
         rows = await self.db.get_modlogs_as_moderator(ctx.guild.id, user.id, limit=10)  # type: ignore[union-attr]
         if not rows:
-            embed = make_embed(action="wasstaff", title="Was Staff", description=f"No staff action record for **{user}**.")
+            embed = make_embed(action="wasstaff", title="👮 Staff History", description=f"No staff action record for 👤 **{user}**.")
             await ctx.send(embed=embed)
             return
-        embed = make_embed(action="wasstaff", title="Was Staff", description=f"Recent actions by **{user}**:")
+        embed = make_embed(action="wasstaff", title="👮 Staff History", description=f"Recent actions by 👤 **{user}**:")
         for row in rows:
             embed.add_field(name=row["action_type"], value=row["timestamp"], inline=False)
         await ctx.send(embed=embed)

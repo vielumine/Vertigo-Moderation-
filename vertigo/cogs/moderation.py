@@ -72,8 +72,8 @@ class ModerationCog(commands.Cog):
 
         dm_embed = make_embed(
             action="warn",
-            title=f"You were warned in {ctx.guild.name}",
-            description=f"Reason: {reason}",
+            title=f"⚠️ You were warned in {ctx.guild.name}",
+            description=f"📝 Reason: {reason}",
         )
         await safe_dm(member, embed=dm_embed)
 
@@ -87,11 +87,11 @@ class ModerationCog(commands.Cog):
 
         embed = make_embed(
             action="warn",
-            title="User Warned",
-            description=f"{member.mention} has been warned.\n\n**Reason:** {reason}\n**Warn ID:** `{warn_id}`",
+            title="⚠️ User Warned",
+            description=f"👤 {member.mention} has been warned.\n\n📝 **Reason:** {reason}\n📍 **Warn ID:** `{warn_id}`",
         )
-        embed.add_field(name="Expires", value=f"In {settings.warn_duration} days", inline=True)
-        embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+        embed.add_field(name="⏱️ Expires", value=f"In {settings.warn_duration} days", inline=True)
+        embed.add_field(name="👮 Moderator", value=ctx.author.mention, inline=True)
         embed, file = attach_gif(embed, gif_key="WARN")
 
         message = await ctx.send(embed=embed, file=file)
@@ -126,8 +126,8 @@ class ModerationCog(commands.Cog):
 
         embed = make_embed(
             action="delwarn",
-            title="Warning Removed",
-            description=f"Removed warning `{warn_id}` for {member.mention}.",
+            title="🗑️ Warning Removed",
+            description=f"📍 Removed warning `{warn_id}` for 👤 {member.mention}.",
         )
         embed, file = attach_gif(embed, gif_key="WARN_REMOVED")
         message = await ctx.send(embed=embed, file=file)
@@ -152,7 +152,7 @@ class ModerationCog(commands.Cog):
 
         rows = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)  # type: ignore[union-attr]
         if not rows:
-            embed = make_embed(action="warnings", title="Warnings", description=f"No active warnings for {member.mention}.")
+            embed = make_embed(action="warnings", title="⚠️ Warnings", description=f"No active warnings for 👤 {member.mention}.")
             await ctx.send(embed=embed)
             return
 
@@ -160,12 +160,12 @@ class ModerationCog(commands.Cog):
         chunk_size = 5
         for i in range(0, len(rows), chunk_size):
             chunk = rows[i : i + chunk_size]
-            embed = make_embed(action="warnings", title=f"Active Warnings - {member}")
+            embed = make_embed(action="warnings", title=f"⚠️ Active Warnings - {member}")
             for row in chunk:
                 mod = f"<@{row['moderator_id']}>" if row["moderator_id"] else "Unknown"
                 embed.add_field(
-                    name=f"ID {row['id']}",
-                    value=f"**Reason:** {row['reason']}\n**Moderator:** {mod}",
+                    name=f"📍 ID {row['id']}",
+                    value=f"📝 **Reason:** {row['reason']}\n👮 **Moderator:** {mod}",
                     inline=False,
                 )
             pages.append(Page(embed=embed))
@@ -182,7 +182,7 @@ class ModerationCog(commands.Cog):
 
         rows = await self.db.get_modlogs_for_user(ctx.guild.id, member.id, limit=100)  # type: ignore[union-attr]
         if not rows:
-            embed = make_embed(action="modlogs", title="Modlogs", description=f"No modlogs for {member.mention}.")
+            embed = make_embed(action="modlogs", title="📋 Modlogs", description=f"No modlogs for 👤 {member.mention}.")
             await ctx.send(embed=embed)
             return
 
@@ -190,13 +190,13 @@ class ModerationCog(commands.Cog):
         chunk_size = 10
         for i in range(0, len(rows), chunk_size):
             chunk = rows[i : i + chunk_size]
-            embed = make_embed(action="modlogs", title=f"Modlogs - {member}")
+            embed = make_embed(action="modlogs", title=f"📋 Modlogs - {member}")
             for row in chunk:
                 mod = f"<@{row['moderator_id']}>" if row["moderator_id"] else "Unknown"
                 reason = row["reason"] or "(no reason)"
                 embed.add_field(
                     name=f"{row['action_type']} | {row['timestamp']}",
-                    value=f"Moderator: {mod}\nReason: {reason}",
+                    value=f"👮 Moderator: {mod}\n📝 Reason: {reason}",
                     inline=False,
                 )
             pages.append(Page(embed=embed))
@@ -219,15 +219,15 @@ class ModerationCog(commands.Cog):
 
         dm_embed = make_embed(
             action="mute",
-            title=f"You were muted in {ctx.guild.name}",
-            description=f"Duration: {humanize_seconds(seconds)}\nReason: {reason}",
+            title=f"🔇 You were muted in {ctx.guild.name}",
+            description=f"⏱️ Duration: {humanize_seconds(seconds)}\n📝 Reason: {reason}",
         )
         await safe_dm(member, embed=dm_embed)
 
         try:
             await member.timeout(until, reason=reason)
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't timeout that user.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't timeout that user.")
             await ctx.send(embed=embed)
             return
 
@@ -241,10 +241,10 @@ class ModerationCog(commands.Cog):
 
         embed = make_embed(
             action="mute",
-            title="User Muted",
-            description=f"{member.mention} has been muted for **{humanize_seconds(seconds)}**.\n\n**Reason:** {reason}",
+            title="🔇 User Muted",
+            description=f"👤 {member.mention} has been muted for **{humanize_seconds(seconds)}**.\n\n📝 **Reason:** {reason}",
         )
-        embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
+        embed.add_field(name="👮 Moderator", value=ctx.author.mention, inline=True)
         embed, file = attach_gif(embed, gif_key="MUTE")
         message = await ctx.send(embed=embed, file=file)
 
@@ -275,21 +275,21 @@ class ModerationCog(commands.Cog):
 
         dm_embed = make_embed(
             action="unmute",
-            title=f"You were unmuted in {ctx.guild.name}",
-            description=f"Reason: {reason}",
+            title=f"🔊 You were unmuted in {ctx.guild.name}",
+            description=f"📝 Reason: {reason}",
         )
         await safe_dm(member, embed=dm_embed)
 
         try:
             await member.timeout(None, reason=reason)
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't untimeout that user.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't untimeout that user.")
             await ctx.send(embed=embed)
             return
 
         await self.db.deactivate_active_mutes(guild_id=ctx.guild.id, user_id=member.id)  # type: ignore[union-attr]
 
-        embed = make_embed(action="unmute", title="User Unmuted", description=f"{member.mention} has been unmuted.\nReason: {reason}")
+        embed = make_embed(action="unmute", title="🔊 User Unmuted", description=f"👤 {member.mention} has been unmuted.\n📝 Reason: {reason}")
         embed, file = attach_gif(embed, gif_key="UNMUTE")
         message = await ctx.send(embed=embed, file=file)
 
@@ -316,19 +316,19 @@ class ModerationCog(commands.Cog):
 
         dm_embed = make_embed(
             action="kick",
-            title=f"You were kicked from {ctx.guild.name}",
-            description=f"Reason: {reason}",
+            title=f"👢 You were kicked from {ctx.guild.name}",
+            description=f"📝 Reason: {reason}",
         )
         await safe_dm(member, embed=dm_embed)
 
         try:
             await member.kick(reason=reason)
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't kick that user.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't kick that user.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="kick", title="User Kicked", description=f"Kicked **{member}**.\nReason: {reason}")
+        embed = make_embed(action="kick", title="👢 User Kicked", description=f"Kicked 👤 **{member}**.\n📝 Reason: {reason}")
         embed, file = attach_gif(embed, gif_key="KICK")
         message = await ctx.send(embed=embed, file=file)
 
@@ -355,21 +355,21 @@ class ModerationCog(commands.Cog):
 
         dm_embed = make_embed(
             action="ban",
-            title=f"You were banned from {ctx.guild.name}",
-            description=f"Reason: {reason}",
+            title=f"🚫 You were banned from {ctx.guild.name}",
+            description=f"📝 Reason: {reason}",
         )
         await safe_dm(member, embed=dm_embed)
 
         try:
             await ctx.guild.ban(member, reason=reason, delete_message_days=0)
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't ban that user.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't ban that user.")
             await ctx.send(embed=embed)
             return
 
         await self.db.add_ban(guild_id=ctx.guild.id, user_id=member.id, moderator_id=ctx.author.id, reason=reason)  # type: ignore[union-attr]
 
-        embed = make_embed(action="ban", title="User Banned", description=f"Banned **{member}**.\nReason: {reason}")
+        embed = make_embed(action="ban", title="🚫 User Banned", description=f"Banned 👤 **{member}**.\n📝 Reason: {reason}")
         embed, file = attach_gif(embed, gif_key="BAN")
         message = await ctx.send(embed=embed, file=file)
 
@@ -394,15 +394,15 @@ class ModerationCog(commands.Cog):
         try:
             await ctx.guild.unban(user, reason=reason)
         except discord.NotFound:
-            embed = make_embed(action="error", title="Not Banned", description="That user is not banned.")
+            embed = make_embed(action="error", title="❌ Not Banned", description="That user is not banned.")
             await ctx.send(embed=embed)
             return
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't unban that user.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't unban that user.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="unban", title="User Unbanned", description=f"Unbanned **{user}**.\nReason: {reason}")
+        embed = make_embed(action="unban", title="✅ User Unbanned", description=f"Unbanned 👤 **{user}**.\n📝 Reason: {reason}")
         message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
@@ -434,15 +434,15 @@ class ModerationCog(commands.Cog):
 
         dm_embed = make_embed(
             action="wm",
-            title=f"You were warned and muted in {ctx.guild.name}",
-            description=f"Duration: {humanize_seconds(seconds)}\nReason: {reason}",
+            title=f"⚠️🔇 You were warned and muted in {ctx.guild.name}",
+            description=f"⏱️ Duration: {humanize_seconds(seconds)}\n📝 Reason: {reason}",
         )
         await safe_dm(member, embed=dm_embed)
 
         try:
             await member.timeout(until, reason=reason)
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't timeout that user.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't timeout that user.")
             await ctx.send(embed=embed)
             return
 
@@ -463,12 +463,12 @@ class ModerationCog(commands.Cog):
 
         embed = make_embed(
             action="wm",
-            title="Warn + Mute",
+            title="⚠️🔇 Warned & Muted",
             description=(
-                f"{member.mention} has been warned and muted.\n\n"
-                f"**Warn ID:** `{warn_id}`\n"
-                f"**Mute Duration:** {humanize_seconds(seconds)}\n"
-                f"**Reason:** {reason}"
+                f"👤 {member.mention} has been warned and muted.\n\n"
+                f"📍 **Warn ID:** `{warn_id}`\n"
+                f"⏱️ **Mute Duration:** {humanize_seconds(seconds)}\n"
+                f"📝 **Reason:** {reason}"
             ),
         )
         embed, file = attach_gif(embed, gif_key="WARN_AND_MUTE")
@@ -508,7 +508,7 @@ class ModerationCog(commands.Cog):
 
         members = await self._parse_members_csv(ctx, users)
         if not members:
-            embed = make_embed(action="error", title="No Users", description="Provide a comma-separated list of users.")
+            embed = make_embed(action="error", title="❌ No Users", description="Provide a comma-separated list of users.")
             await ctx.send(embed=embed)
             return
 
@@ -518,7 +518,7 @@ class ModerationCog(commands.Cog):
             if await self._blocked_by_staff_immunity(ctx, m):
                 failed += 1
                 continue
-            await safe_dm(m, embed=make_embed(action="masskick", title=f"You were kicked from {ctx.guild.name}", description=f"Reason: {reason}"))
+            await safe_dm(m, embed=make_embed(action="masskick", title=f"👢 You were kicked from {ctx.guild.name}", description=f"📝 Reason: {reason}"))
             try:
                 await m.kick(reason=reason)
                 ok += 1
@@ -526,7 +526,7 @@ class ModerationCog(commands.Cog):
             except Exception:
                 failed += 1
 
-        embed = make_embed(action="masskick", title="Mass Kick Results", description=f"Succeeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="masskick", title="👢 Mass Kick Results", description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         embed, file = attach_gif(embed, gif_key="KICK")
         await ctx.send(embed=embed, file=file)
         await safe_delete(ctx.message)
@@ -540,7 +540,7 @@ class ModerationCog(commands.Cog):
 
         members = await self._parse_members_csv(ctx, users)
         if not members:
-            embed = make_embed(action="error", title="No Users", description="Provide a comma-separated list of users.")
+            embed = make_embed(action="error", title="❌ No Users", description="Provide a comma-separated list of users.")
             await ctx.send(embed=embed)
             return
 
@@ -550,7 +550,7 @@ class ModerationCog(commands.Cog):
             if await self._blocked_by_staff_immunity(ctx, m):
                 failed += 1
                 continue
-            await safe_dm(m, embed=make_embed(action="massban", title=f"You were banned from {ctx.guild.name}", description=f"Reason: {reason}"))
+            await safe_dm(m, embed=make_embed(action="massban", title=f"🚫 You were banned from {ctx.guild.name}", description=f"📝 Reason: {reason}"))
             try:
                 await ctx.guild.ban(m, reason=reason, delete_message_days=0)  # type: ignore[union-attr]
                 await self.db.add_ban(guild_id=ctx.guild.id, user_id=m.id, moderator_id=ctx.author.id, reason=reason)  # type: ignore[union-attr]
@@ -559,7 +559,7 @@ class ModerationCog(commands.Cog):
             except Exception:
                 failed += 1
 
-        embed = make_embed(action="massban", title="Mass Ban Results", description=f"Succeeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="massban", title="🚫 Mass Ban Results", description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         embed, file = attach_gif(embed, gif_key="BAN")
         await ctx.send(embed=embed, file=file)
         await safe_delete(ctx.message)
@@ -581,7 +581,7 @@ class ModerationCog(commands.Cog):
             if await self._blocked_by_staff_immunity(ctx, m):
                 failed += 1
                 continue
-            await safe_dm(m, embed=make_embed(action="massmute", title=f"You were muted in {ctx.guild.name}", description=f"Duration: {humanize_seconds(seconds)}\nReason: {reason}"))
+            await safe_dm(m, embed=make_embed(action="massmute", title=f"🔇 You were muted in {ctx.guild.name}", description=f"⏱️ Duration: {humanize_seconds(seconds)}\n📝 Reason: {reason}"))
             try:
                 await m.timeout(until, reason=reason)
                 await self.db.add_mute(guild_id=ctx.guild.id, user_id=m.id, moderator_id=ctx.author.id, reason=reason, duration_seconds=seconds)  # type: ignore[union-attr]
@@ -590,37 +590,9 @@ class ModerationCog(commands.Cog):
             except Exception:
                 failed += 1
 
-        embed = make_embed(action="massmute", title="Mass Mute Results", description=f"Duration: {humanize_seconds(seconds)}\nSucceeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="massmute", title="🔇 Mass Mute Results", description=f"⏱️ Duration: {humanize_seconds(seconds)}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         embed, file = attach_gif(embed, gif_key="MUTE")
         await ctx.send(embed=embed, file=file)
-        await safe_delete(ctx.message)
-
-    @commands.command(name="massstrike")
-    @commands.guild_only()
-    @commands_channel_check()
-    @require_level("senior_mod")
-    async def massstrike(self, ctx: commands.Context, users: str, *, reason: str) -> None:
-        """Triple-warn multiple users."""
-
-        settings = await self._settings(ctx.guild)  # type: ignore[arg-type]
-        members = await self._parse_members_csv(ctx, users)
-
-        ok = 0
-        failed = 0
-        for m in members:
-            if await self._blocked_by_staff_immunity(ctx, m):
-                failed += 1
-                continue
-            try:
-                for _ in range(3):
-                    await self.db.add_warning(guild_id=ctx.guild.id, user_id=m.id, moderator_id=ctx.author.id, reason=reason, warn_days=settings.warn_duration)  # type: ignore[union-attr]
-                    await self.db.add_modlog(guild_id=ctx.guild.id, action_type="warn", user_id=m.id, moderator_id=ctx.author.id, reason=reason)  # type: ignore[union-attr]
-                ok += 1
-            except Exception:
-                failed += 1
-
-        embed = make_embed(action="massstrike", title="Mass Strike Results", description=f"Added 3 warnings each.\nSucceeded: **{ok}**\nFailed: **{failed}**")
-        await ctx.send(embed=embed)
         await safe_delete(ctx.message)
 
     # ----------------------------- Head moderator -----------------------------

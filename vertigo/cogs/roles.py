@@ -49,11 +49,11 @@ class RolesCog(commands.Cog):
         try:
             await member.add_roles(role, reason=f"Role assigned by {ctx.author}")
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't assign that role.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't assign that role.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="role", title="Role Assigned", description=f"Assigned {role.mention} to {member.mention}.")
+        embed = make_embed(action="role", title="📌 Role Assigned", description=f"👤 Assigned {role.mention} to {member.mention}.")
         embed, file = attach_gif(embed, gif_key="ROLE_ASSIGNED")
         message = await ctx.send(embed=embed, file=file)
 
@@ -83,11 +83,11 @@ class RolesCog(commands.Cog):
         try:
             await member.remove_roles(role, reason=f"Role removed by {ctx.author}")
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't remove that role.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't remove that role.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="removerole", title="Role Removed", description=f"Removed {role.mention} from {member.mention}.")
+        embed = make_embed(action="removerole", title="📌 Role Removed", description=f"👤 Removed {role.mention} from {member.mention}.")
         embed, file = attach_gif(embed, gif_key="ROLE_REMOVED")
         message = await ctx.send(embed=embed, file=file)
 
@@ -119,7 +119,7 @@ class RolesCog(commands.Cog):
         try:
             await member.add_roles(role, reason=f"Temp role assigned by {ctx.author}")
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't assign that role.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't assign that role.")
             await ctx.send(embed=embed)
             return
 
@@ -133,8 +133,8 @@ class RolesCog(commands.Cog):
 
         embed = make_embed(
             action="temprole",
-            title="Temporary Role Assigned",
-            description=f"Assigned {role.mention} to {member.mention} for **{duration}**.",
+            title="⏱️ Temporary Role Assigned",
+            description=f"👤 Assigned {role.mention} to {member.mention} for **{duration}**.",
         )
         embed, file = attach_gif(embed, gif_key="TEMP_ROLE")
         message = await ctx.send(embed=embed, file=file)
