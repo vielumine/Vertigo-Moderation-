@@ -51,7 +51,7 @@ class ModerationCog(commands.Cog):
         staff_ids = set(settings.staff_role_ids + settings.head_mod_role_ids + settings.senior_mod_role_ids + settings.moderator_role_ids)
         is_staff = any(r.id in staff_ids for r in target.roles)
         if is_staff and not (ctx.author.guild_permissions.administrator or any(r.id in settings.admin_role_ids for r in ctx.author.roles)):
-            embed = make_embed(action="error", title="Protected Target", description="That member is staff and cannot be moderated by non-admins.")
+            embed = make_embed(action="error", title="❌ Cannot Moderate Staff", description=f"@{target.name} is a staff member, I will not do that.")
             await ctx.send(embed=embed)
             return True
         return False

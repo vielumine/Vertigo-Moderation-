@@ -47,6 +47,30 @@ Updated `!lockchannels` and `!unlockchannels` to use the member role from guild 
 
 ---
 
+## Change 3: Staff Immunity Error Message Enhancement
+
+### Overview
+Updated the error message when non-admin staff try to moderate other staff members.
+
+### Files Modified
+- `vertigo/cogs/moderation.py` - Updated `_blocked_by_staff_immunity()` function
+
+### Key Changes
+1. **Error message** now shows target username: "@Username is a staff member, I will not do that."
+2. **More user-friendly** and conversational tone
+3. **No pings** - uses `@{target.name}` instead of `{target.mention}`
+
+### Commands Affected
+All moderation commands that check staff immunity:
+- !warn, !mute, !kick, !ban, !wm
+- !masskick, !massban, !massmute, !imprison
+
+### Behavior
+- **Non-admin staff** trying to moderate staff → Shows enhanced error message
+- **Admins** can still moderate staff members normally
+
+---
+
 ## Testing Checklist
 
 ### Staff Flag System
@@ -64,11 +88,19 @@ Updated `!lockchannels` and `!unlockchannels` to use the member role from guild 
 - [ ] Verify member role is locked, not @everyone
 - [ ] Verify staff can still send messages when locked
 
+### Staff Immunity Error Message
+- [ ] Non-admin staff tries to !warn another staff → Shows new error message
+- [ ] Error message shows correct username (not ping)
+- [ ] Error message format: "@Username is a staff member, I will not do that."
+- [ ] Admins can still moderate staff members normally
+- [ ] Works with all moderation commands (warn, kick, ban, etc.)
+
 ---
 
 ## Documentation Files Created
 - `CHANGES.md` - Details of staff flag system update
 - `LOCK_UNLOCK_CHANGES.md` - Details of lock/unlock changes
+- `STAFF_IMMUNITY_CHANGES.md` - Details of staff immunity enhancement
 - `IMPLEMENTATION_SUMMARY.md` - Technical implementation details
 - `COMPLETE_CHANGES_SUMMARY.md` - This file
 
