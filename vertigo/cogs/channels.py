@@ -33,7 +33,7 @@ class ChannelsCog(commands.Cog):
             return
         delay = channel.slowmode_delay
         value = f"{delay}s" if delay else "None"
-        embed = make_embed(action="checkslowmode", title="Slowmode", description=f"{channel.mention}: **{value}**")
+        embed = make_embed(action="checkslowmode", title="⏱️ Slowmode Check", description=f"{channel.mention}: **{value}**")
         await ctx.send(embed=embed)
 
     @commands.command(name="setslowmode")
@@ -73,11 +73,11 @@ class ChannelsCog(commands.Cog):
         try:
             await channel.edit(slowmode_delay=seconds, reason=f"Slowmode set by {ctx.author}")
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't edit that channel.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't edit that channel.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="setslowmode", title="Slowmode Updated", description=f"{channel.mention} slowmode set to **{seconds}s**")
+        embed = make_embed(action="setslowmode", title="⏱️ Slowmode Updated", description=f"{channel.mention} slowmode set to **{seconds}s**")
         await ctx.send(embed=embed)
         await safe_delete(ctx.message)
 
@@ -88,9 +88,12 @@ class ChannelsCog(commands.Cog):
     async def massslow(self, ctx: commands.Context, channels: str, duration: str) -> None:
         seconds = parse_duration(duration)
         if seconds > 21600:
-            embed = make_embed(action="error", title="Too Long", description="Max slowmode is 6 hours (21600s).")
+            embed = make_embed(action="error", title="❌ Too Long", description="Max slowmode is 6 hours (21600s).")
             await ctx.send(embed=embed)
             return
+
+        # Add loading reaction for long-running operation
+        await add_loading_reaction(ctx.message)
 
         ok = 0
         failed = 0
@@ -109,7 +112,7 @@ class ChannelsCog(commands.Cog):
                 except Exception:
                     failed += 1
 
-        embed = make_embed(action="massslow", title="Mass Slowmode", description=f"Set to **{seconds}s**\nSucceeded: **{ok}**\nFailed: **{failed}**")
+        embed = make_embed(action="massslow", title="⏱️ Mass Slowmode Results", description=f"⏱️ Set to **{seconds}s**\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
         await safe_delete(ctx.message)
 
@@ -127,11 +130,11 @@ class ChannelsCog(commands.Cog):
         try:
             await channel.set_permissions(ctx.guild.default_role, overwrite=overwrite, reason=f"Locked by {ctx.author}")
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't lock that channel.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't lock that channel.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="lock", title="Channel Locked", description=f"Locked {channel.mention}.")
+        embed = make_embed(action="lock", title="🔒 Channel Locked", description=f"Locked {channel.mention}.")
         await ctx.send(embed=embed)
 
     @commands.command(name="unlock")
@@ -148,11 +151,11 @@ class ChannelsCog(commands.Cog):
         try:
             await channel.set_permissions(ctx.guild.default_role, overwrite=overwrite, reason=f"Unlocked by {ctx.author}")
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't unlock that channel.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't unlock that channel.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="unlock", title="Channel Unlocked", description=f"Unlocked {channel.mention}.")
+        embed = make_embed(action="unlock", title="🔓 Channel Unlocked", description=f"Unlocked {channel.mention}.")
         await ctx.send(embed=embed)
 
     @commands.command(name="hide")

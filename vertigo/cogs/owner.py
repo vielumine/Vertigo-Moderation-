@@ -27,7 +27,7 @@ class OwnerCog(commands.Cog):
     @require_owner()
     async def dmuser(self, ctx: commands.Context, user: discord.User, *, message: str) -> None:
         await safe_dm(user, content=message)
-        embed = make_embed(action="success", title="DM Sent", description=f"Sent a DM to {user}.")
+        embed = make_embed(action="success", title="✉️ Direct Message Sent", description=f"Sent a DM to 👤 {user}.")
         await ctx.send(embed=embed)
 
     @commands.command(name="waketime")
@@ -37,7 +37,7 @@ class OwnerCog(commands.Cog):
         days = delta.days
         hours, rem = divmod(delta.seconds, 3600)
         minutes, _ = divmod(rem, 60)
-        embed = make_embed(action="waketime", title="Uptime", description=f"{days} days, {hours} hours, {minutes} minutes")
+        embed = make_embed(action="waketime", title="⏱️ Bot Uptime", description=f"{days} days, {hours} hours, {minutes} minutes")
         await ctx.send(embed=embed)
 
     @commands.command(name="banguild")
@@ -47,14 +47,14 @@ class OwnerCog(commands.Cog):
         guild = self.bot.get_guild(guild_id)
         if guild:
             await guild.leave()
-        embed = make_embed(action="ban", title="Guild Blacklisted", description=f"Blacklisted guild `{guild_id}`.")
+        embed = make_embed(action="ban", title="🚫 Guild Banned", description=f"Blacklisted guild `{guild_id}`.")
         await ctx.send(embed=embed)
 
     @commands.command(name="unbanguild")
     @require_owner()
     async def unbanguild(self, ctx: commands.Context, guild_id: int) -> None:
         await self.db.unblacklist_guild(guild_id=guild_id)
-        embed = make_embed(action="unban", title="Guild Unblacklisted", description=f"Removed guild `{guild_id}` from blacklist.")
+        embed = make_embed(action="unban", title="✅ Guild Unbanned", description=f"Removed guild `{guild_id}` from blacklist.")
         await ctx.send(embed=embed)
 
     @commands.command(name="checkguild")
@@ -62,12 +62,12 @@ class OwnerCog(commands.Cog):
     async def checkguild(self, ctx: commands.Context, guild_id: int) -> None:
         guild = self.bot.get_guild(guild_id)
         if not guild:
-            embed = make_embed(action="checkguild", title="Guild", description="Bot is not in that guild.")
+            embed = make_embed(action="checkguild", title="🔍 Guild Check", description="Bot is not in that guild.")
             await ctx.send(embed=embed)
             return
-        embed = make_embed(action="checkguild", title="Guild", description=f"{guild.name} (`{guild.id}`)")
-        embed.add_field(name="Members", value=str(guild.member_count or len(guild.members)), inline=True)
-        embed.add_field(name="Owner", value=f"{guild.owner} ({guild.owner_id})", inline=False)
+        embed = make_embed(action="checkguild", title="🔍 Guild Check", description=f"{guild.name} (`{guild.id}`)")
+        embed.add_field(name="👥 Members", value=str(guild.member_count or len(guild.members)), inline=True)
+        embed.add_field(name="👑 Owner", value=f"{guild.owner} ({guild.owner_id})", inline=False)
         await ctx.send(embed=embed)
 
     @commands.command(name="guildlist")
@@ -75,7 +75,7 @@ class OwnerCog(commands.Cog):
     async def guildlist(self, ctx: commands.Context) -> None:
         lines = [f"{g.name} (`{g.id}`) - {g.member_count or len(g.members)} members" for g in self.bot.guilds]
         description = "\n".join(lines[:50]) or "None"
-        embed = make_embed(action="guildlist", title="Guild List", description=description)
+        embed = make_embed(action="guildlist", title="📍 Guild List", description=description)
         await ctx.send(embed=embed)
 
     @commands.command(name="nuke")
@@ -93,19 +93,22 @@ class OwnerCog(commands.Cog):
             return reaction.message.id == confirm.id and str(reaction.emoji) == "✅" and user.id == ctx.author.id
 
         try:
-            await self.bot.wait_for("reaction_add", check=check, timeout=30)
+           await self.bot.wait_for("reaction_add", check=check, timeout=30)
         except asyncio.TimeoutError:
-            await confirm.edit(content="Timed out.")
-            return
+           await confirm.edit(content="Timed out.")
+           return
+
+        # Add loading reaction for long-running operation
+        await confirm.add_reaction("🔃")
 
         deleted = 0
         while True:
-            batch = await channel.purge(limit=100)
-            deleted += len(batch)
-            if len(batch) < 100:
-                break
+           batch = await channel.purge(limit=100)
+           deleted += len(batch)
+           if len(batch) < 100:
+               break
 
-        embed = make_embed(action="success", title="Nuke Complete", description=f"Deleted **{deleted}** messages.")
+        embed = make_embed(action="success", title="💣 Channel Nuked", description=f"Deleted **{deleted}** messages.")
         await ctx.send(embed=embed)
 
 

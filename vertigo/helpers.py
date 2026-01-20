@@ -153,6 +153,14 @@ async def safe_dm(user: discord.abc.User, *, content: str | None = None, embed: 
         logger.exception("Failed to DM user %s", getattr(user, "id", "?"))
 
 
+async def add_loading_reaction(message: discord.Message) -> None:
+    """Add a loading reaction (🔃) to indicate processing."""
+    try:
+        await message.add_reaction("🔃")
+    except Exception:
+        logger.debug("Failed to add loading reaction")
+
+
 def make_embed(*, action: str, title: str, description: str | None = None) -> discord.Embed:
     embed = discord.Embed(
         title=title,
@@ -165,12 +173,9 @@ def make_embed(*, action: str, title: str, description: str | None = None) -> di
 
 
 def attach_gif(embed: discord.Embed, *, gif_key: str, filename: str = "action.gif") -> tuple[discord.Embed, discord.File | None]:
-    path = config.get_gif_path(gif_key)
-    if not path.exists():
-        return embed, None
-    file = discord.File(str(path), filename=filename)
-    embed.set_thumbnail(url=f"attachment://{filename}")
-    return embed, file
+    gif_url = config.get_gif_url(gif_key)
+    embed.set_thumbnail(url=gif_url)
+    return embed, None
 
 
 async def send_embed(

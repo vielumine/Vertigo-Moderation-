@@ -34,7 +34,7 @@ class CleaningCog(commands.Cog):
                 except Exception:
                     continue
 
-        embed = make_embed(action="clean", title="Clean", description=f"Deleted **{deleted}** bot messages.")
+        embed = make_embed(action="clean", title="🧹 Bot Messages Cleaned", description=f"Deleted **{deleted}** bot messages.")
         await ctx.send(embed=embed, delete_after=5)
         await safe_delete(ctx.message)
 
@@ -53,11 +53,11 @@ class CleaningCog(commands.Cog):
         try:
             deleted = await ctx.channel.purge(limit=amount + 1)  # type: ignore[union-attr]
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't delete messages here.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't delete messages here.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="purge", title="Purge", description=f"Deleted **{len(deleted) - 1}** messages.")
+        embed = make_embed(action="purge", title="🧹 Messages Purged", description=f"Deleted **{len(deleted) - 1}** messages.")
         await ctx.send(embed=embed, delete_after=5)
 
     @commands.command(name="purgeuser")
@@ -78,11 +78,11 @@ class CleaningCog(commands.Cog):
         try:
             deleted = await ctx.channel.purge(limit=amount * 5, check=check)  # type: ignore[union-attr]
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't delete messages here.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't delete messages here.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="purgeuser", title="Purge User", description=f"Deleted **{len(deleted)}** messages from {member.mention}.")
+        embed = make_embed(action="purgeuser", title="🧹 User Messages Purged", description=f"Deleted **{len(deleted)}** messages from {member.mention}.")
         await ctx.send(embed=embed, delete_after=5)
         await safe_delete(ctx.message)
 
@@ -106,11 +106,11 @@ class CleaningCog(commands.Cog):
         try:
             deleted = await ctx.channel.purge(limit=amount * 5, check=check)  # type: ignore[union-attr]
         except discord.Forbidden:
-            embed = make_embed(action="error", title="Missing Permissions", description="I can't delete messages here.")
+            embed = make_embed(action="error", title="❌ Missing Permissions", description="I can't delete messages here.")
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="purgematch", title="Purge Match", description=f"Deleted **{len(deleted)}** messages containing `{keyword}`.")
+        embed = make_embed(action="purgematch", title="🧹 Keyword Purge Complete", description=f"Deleted **{len(deleted)}** messages containing `{keyword}`.")
         await ctx.send(embed=embed, delete_after=5)
         await safe_delete(ctx.message)
 
