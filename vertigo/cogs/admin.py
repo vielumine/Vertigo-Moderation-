@@ -13,6 +13,7 @@ from vertigo.database import Database, GuildSettings
 from vertigo.helpers import (
     Page,
     PaginationView,
+    add_loading_reaction,
     attach_gif,
     commands_channel_check,
     make_embed,
@@ -52,11 +53,17 @@ class AdminCog(commands.Cog):
         active = await self.db.get_active_staff_flags(guild_id=ctx.guild.id, staff_user_id=member.id)  # type: ignore[union-attr]
         strike = len(active)
 
+        title = "🚩 Staff Flag"
+        if strike >= config.MAX_STAFF_FLAGS:
+            title = f"⛔ Auto-Termination - {config.MAX_STAFF_FLAGS} strikes reached"
+
         embed = make_embed(
             action="flag",
-            title="🚩 Staff Flag",
-            description=f"👤 Flagged {member.mention}.\n📊 Strike: **{strike}/3**\n📝 Reason: {reason}\n📍 ID: `{flag_id}`",
+            title=title,
+            description=f"👤 Flagged {member.mention}.\n🆔 Strike: **{strike}/{config.MAX_STAFF_FLAGS}**\n📝 Reason: {reason}\n📍 ID: `{flag_id}`",
         )
+        if strike >= config.MAX_STAFF_FLAGS:
+            embed.add_field(name="⚠️ Warning", value="Auto-termination triggered!", inline=False)
         embed, file = attach_gif(embed, gif_key="STAFF_FLAG")
         message = await ctx.send(embed=embed, file=file)
 
@@ -69,9 +76,9 @@ class AdminCog(commands.Cog):
             message_id=message.id,
         )
 
-        if strike >= 3:
-            await self._terminate(ctx, member, reason=f"Auto-terminate: 3 flags - {reason}")
-            await safe_dm(ctx.author, embed=make_embed(action="terminate", title="Auto Terminate", description=f"{member} reached 3 strikes and was terminated."))
+        if strike >= config.MAX_STAFF_FLAGS:
+            await self._terminate(ctx, member, reason=f"Auto-terminate: {config.MAX_STAFF_FLAGS} flags - {reason}")
+            await safe_dm(ctx.author, embed=make_embed(action="terminate", title="Auto Terminate", description=f"{member} reached {config.MAX_STAFF_FLAGS} strikes and was terminated."))
 
         await safe_delete(ctx.message)
 
@@ -82,7 +89,14 @@ class AdminCog(commands.Cog):
     async def unflag(self, ctx: commands.Context, member: discord.Member, strike_id: int) -> None:
         await self.db.deactivate_staff_flag(guild_id=ctx.guild.id, flag_id=strike_id)  # type: ignore[union-attr]
 
-        embed = make_embed(action="unflag", title="🚩 Flag Removed", description=f"📍 Removed flag `{strike_id}` for 👤 {member.mention}.")
+        active = await self.db.get_active_staff_flags(guild_id=ctx.guild.id, staff_user_id=member.id)  # type: ignore[union-attr]
+        strike_count = len(active)
+
+        embed = make_embed(
+            action="unflag",
+            title="🚩 Flag Removed",
+            description=f"📍 Removed flag `{strike_id}` for 👤 {member.mention}.\n📊 Updated Strikes: **{strike_count}/{config.MAX_STAFF_FLAGS}**",
+        )
         embed, file = attach_gif(embed, gif_key="STAFF_UNFLAG")
         message = await ctx.send(embed=embed, file=file)
 
@@ -158,6 +172,17 @@ class AdminCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
+        if not settings.member_role_id:
+            embed = make_embed(action="error", title="❌ No Member Role", description="No member role configured. Use !setup to set a member role first.")
+            await ctx.send(embed=embed)
+            return
+
+        member_role = ctx.guild.get_role(settings.member_role_id)  # type: ignore[union-attr]
+        if not member_role:
+            embed = make_embed(action="error", title="❌ Role Not Found", description="Configured member role no longer exists. Use !setup to update.")
+            await ctx.send(embed=embed)
+            return
+
         # Add loading reaction for long-running operation
         await add_loading_reaction(ctx.message)
 
@@ -168,10 +193,10 @@ class AdminCog(commands.Cog):
             if not isinstance(category, discord.CategoryChannel):
                 continue
             for channel in category.text_channels:
-                overwrite = channel.overwrites_for(ctx.guild.default_role)  # type: ignore[union-attr]
+                overwrite = channel.overwrites_for(member_role)
                 overwrite.send_messages = False
                 try:
-                    await channel.set_permissions(ctx.guild.default_role, overwrite=overwrite, reason=f"lockchannels by {ctx.author}")
+                    await channel.set_permissions(member_role, overwrite=overwrite, reason=f"lockchannels by {ctx.author}")
                     ok += 1
                     await self.db.add_modlog(guild_id=ctx.guild.id, action_type="lock", user_id=None, moderator_id=ctx.author.id, target_id=channel.id, reason="lockchannels")  # type: ignore[union-attr]
                 except Exception:
@@ -191,6 +216,17 @@ class AdminCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
+        if not settings.member_role_id:
+            embed = make_embed(action="error", title="❌ No Member Role", description="No member role configured. Use !setup to set a member role first.")
+            await ctx.send(embed=embed)
+            return
+
+        member_role = ctx.guild.get_role(settings.member_role_id)  # type: ignore[union-attr]
+        if not member_role:
+            embed = make_embed(action="error", title="❌ Role Not Found", description="Configured member role no longer exists. Use !setup to update.")
+            await ctx.send(embed=embed)
+            return
+
         # Add loading reaction for long-running operation
         await add_loading_reaction(ctx.message)
 
@@ -201,10 +237,10 @@ class AdminCog(commands.Cog):
             if not isinstance(category, discord.CategoryChannel):
                 continue
             for channel in category.text_channels:
-                overwrite = channel.overwrites_for(ctx.guild.default_role)  # type: ignore[union-attr]
+                overwrite = channel.overwrites_for(member_role)
                 overwrite.send_messages = None
                 try:
-                    await channel.set_permissions(ctx.guild.default_role, overwrite=overwrite, reason=f"unlockchannels by {ctx.author}")
+                    await channel.set_permissions(member_role, overwrite=overwrite, reason=f"unlockchannels by {ctx.author}")
                     ok += 1
                     await self.db.add_modlog(guild_id=ctx.guild.id, action_type="unlock", user_id=None, moderator_id=ctx.author.id, target_id=channel.id, reason="unlockchannels")  # type: ignore[union-attr]
                 except Exception:
@@ -241,6 +277,18 @@ class AdminCog(commands.Cog):
         def has(role_ids: list[int], member: discord.Member) -> bool:
             return any(r.id in set(role_ids) for r in member.roles)
 
+        def get_flag_emoji(strike_count: int) -> str:
+            if strike_count == 0:
+                return ""
+            elif strike_count <= 2:
+                return "✅"
+            elif strike_count == 3:
+                return "⚠️"
+            elif strike_count == 4:
+                return "🟠"
+            else:
+                return "🔴"
+
         mods = [m for m in ctx.guild.members if has(settings.moderator_role_ids, m)]  # type: ignore[union-attr]
         seniors = [m for m in ctx.guild.members if has(settings.senior_mod_role_ids, m)]  # type: ignore[union-attr]
         heads = [m for m in ctx.guild.members if has(settings.head_mod_role_ids, m)]  # type: ignore[union-attr]
@@ -255,7 +303,16 @@ class AdminCog(commands.Cog):
         for title, members in entries:
             embed = make_embed(action="stafflist", title=f"👮 {title}")
             if members:
-                embed.description = "\n".join(f"👤 {m} (`{m.id}`)" for m in members[:50])
+                lines: list[str] = []
+                for m in members[:50]:
+                    flags = await self.db.get_active_staff_flags(guild_id=ctx.guild.id, staff_user_id=m.id)  # type: ignore[union-attr]
+                    strike_count = len(flags)
+                    emoji = get_flag_emoji(strike_count)
+                    if strike_count > 0:
+                        lines.append(f"👤 {m} (`{m.id}`) - {emoji} 🚩 Flags: **{strike_count}/{config.MAX_STAFF_FLAGS}**")
+                    else:
+                        lines.append(f"👤 {m} (`{m.id}`)")
+                embed.description = "\n".join(lines)
             else:
                 embed.description = "None"
             pages.append(Page(embed=embed))

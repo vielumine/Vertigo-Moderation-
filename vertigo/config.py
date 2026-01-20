@@ -22,6 +22,8 @@ BOT_NAME: str = os.getenv("BOT_NAME", "Vertigo")
 
 DEFAULT_PREFIX: str = os.getenv("DEFAULT_PREFIX", "!")
 
+MAX_STAFF_FLAGS: int = 5
+
 OWNER_ID: int = int(os.getenv("OWNER_ID", "0") or 0)
 
 DATABASE_PATH: str = os.getenv("DATABASE_PATH", "vertigo.db")

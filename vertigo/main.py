@@ -111,12 +111,30 @@ async def main() -> None:
         if isinstance(error, commands.CheckFailure):
             return
         if isinstance(error, commands.MissingRequiredArgument):
-            embed = make_embed(action="error", title="Missing Arguments", description=str(error))
+            prefix = await _get_prefix(bot, ctx.message)
+            if isinstance(prefix, list):
+                prefix = prefix[0]
+            usage = f"{prefix}{ctx.command.qualified_name} {ctx.command.signature}"
+            embed = make_embed(
+                action="error",
+                title="❌ Missing Arguments",
+                description=f"{str(error)}\n\n**Usage:**\n```{usage}```",
+            )
             await ctx.send(embed=embed)
             return
         if isinstance(error, commands.BadArgument):
-            embed = make_embed(action="error", title="Bad Argument", description=str(error))
+            prefix = await _get_prefix(bot, ctx.message)
+            if isinstance(prefix, list):
+                prefix = prefix[0]
+            usage = f"{prefix}{ctx.command.qualified_name} {ctx.command.signature}"
+            embed = make_embed(
+                action="error",
+                title="❌ Invalid Arguments",
+                description=f"{str(error)}\n\n**Usage:**\n```{usage}```",
+            )
             await ctx.send(embed=embed)
+            return
+        if isinstance(error, commands.CommandNotFound):
             return
         logger.exception("Unhandled command error", exc_info=error)
         embed = make_embed(action="error", title="Error", description="An error occurred. Please try again later.")

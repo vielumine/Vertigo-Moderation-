@@ -357,18 +357,23 @@ class MiscCog(commands.Cog):
     @require_level("admin")
     async def adcmd(self, ctx: commands.Context) -> None:
         prefix = (await self.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)).prefix  # type: ignore[union-attr]
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)  # type: ignore[union-attr]
         embed = make_embed(
             action="adcmd",
             title="Admin Commands",
             description=(
-                f"`{prefix}flag <staff_user> <reason>`\n"
-                f"`{prefix}unflag <staff_user> <strike_id>`\n"
-                f"`{prefix}terminate <staff_user>`\n"
-                f"`{prefix}lockchannels`\n"
-                f"`{prefix}unlockchannels`\n"
-                f"`{prefix}scanacc <user>`\n"
-                f"`{prefix}stafflist`\n"
-                f"`{prefix}wasstaff <user>`"
+                f"**Staff Flagging ({config.MAX_STAFF_FLAGS}-Strike System)**\n"
+                f"`{prefix}flag <staff_user> <reason>` - Flag a staff member\n"
+                f"`{prefix}unflag <staff_user> <strike_id>` - Remove a flag\n"
+                f"`{prefix}stafflist` - View all staff with strike counts\n"
+                f"⚠️ **{config.MAX_STAFF_FLAGS} flags = auto-termination**\n"
+                f"📅 Flags expire after {settings.flag_duration} days\n\n"
+                f"**Other Commands**\n"
+                f"`{prefix}terminate <staff_user>` - Manually terminate staff\n"
+                f"`{prefix}lockchannels` - Lock all configured categories\n"
+                f"`{prefix}unlockchannels` - Unlock all configured categories\n"
+                f"`{prefix}scanacc <user>` - Scan account for suspicious activity\n"
+                f"`{prefix}wasstaff <user>` - Check staff history"
             ),
         )
         await ctx.send(embed=embed)
