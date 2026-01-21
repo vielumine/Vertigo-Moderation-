@@ -5,11 +5,11 @@ import sys
 import os
 sys.path.insert(0, '/home/engine/project')
 
-from vertigo.helpers import get_ai_response, get_personality_prompt, truncate_response
+from helpers import get_ai_response, get_personality_prompt, truncate_response
 
 def test_config():
     """Test configuration values."""
-    from vertigo.config import AI_PERSONALITIES, HUGGINGFACE_TOKEN, MAX_RESPONSE_LENGTH
+    from config import AI_PERSONALITIES, HUGGINGFACE_TOKEN, MAX_RESPONSE_LENGTH
     
     print("=== Configuration Test ===")
     print(f"AI personalities: {list(AI_PERSONALITIES.keys())}")
@@ -46,7 +46,7 @@ def test_truncation():
 
 async def test_ai_response():
     """Test AI response generation (requires valid HuggingFace token)."""
-    from vertigo.config import HUGGINGFACE_TOKEN
+    from config import HUGGINGFACE_TOKEN
     
     print("=== AI Response Test ===")
     

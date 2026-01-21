@@ -21,8 +21,8 @@ import discord
 import requests
 from discord.ext import commands
 
-from vertigo import config
-from vertigo.database import AISettings, GuildSettings
+import config
+from database import AISettings, GuildSettings
 
 logger = logging.getLogger(__name__)
 

@@ -8,9 +8,9 @@ from datetime import timedelta
 import discord
 from discord.ext import commands
 
-from vertigo import config
-from vertigo.database import Database
-from vertigo.helpers import (
+from .. import config
+from ..database import Database
+from ..helpers import (
     add_loading_reaction,
     make_embed,
     require_level,
@@ -61,7 +61,7 @@ class WMRCommand:
             member = referenced_msg.author
             
             # Parse duration
-            from vertigo.helpers import parse_duration
+            from ..helpers import parse_duration
             duration_seconds = parse_duration(duration)
             
             # Add warning

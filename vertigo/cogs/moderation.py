@@ -9,9 +9,9 @@ from datetime import timedelta
 import discord
 from discord.ext import commands
 
-from vertigo import config
-from vertigo.database import Database, GuildSettings
-from vertigo.helpers import (
+from .. import config
+from ..database import Database, GuildSettings
+from ..helpers import (
     Page,
     PaginationView,
     attach_gif,

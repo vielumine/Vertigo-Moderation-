@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING
 import discord
 from discord.ext import commands
 
-from vertigo import config
-from vertigo.database import AITarget, BotBlacklist, Database, TimeoutSettings
-from vertigo.helpers import (
+from .. import config
+from ..database import AITarget, BotBlacklist, Database, TimeoutSettings
+from ..helpers import (
     add_loading_reaction,
     extract_id,
     make_embed,
@@ -24,7 +24,7 @@ from vertigo.helpers import (
 )
 
 if TYPE_CHECKING:
-    from vertigo.main import VertigoBot
+    from ..main import VertigoBot
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ class AIModerationCog(commands.Cog):
         await add_loading_reaction(ctx.message)
         
         try:
-            from vertigo.helpers import parse_duration
+            from ..helpers import parse_duration
             duration_seconds = parse_duration(duration)
             
             # Add mute

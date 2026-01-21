@@ -7,8 +7,8 @@ import logging
 import discord
 from discord.ext import commands
 
-from vertigo.database import Database
-from vertigo.helpers import commands_channel_check, make_embed, safe_dm
+from ..database import Database
+from ..helpers import commands_channel_check, make_embed, safe_dm
 
 logger = logging.getLogger(__name__)
 

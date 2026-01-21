@@ -7,7 +7,7 @@ import logging
 import discord
 from discord.ext import commands
 
-from vertigo.helpers import (
+from ..helpers import (
     commands_channel_check,
     extract_id,
     make_embed,
