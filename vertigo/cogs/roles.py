@@ -7,8 +7,8 @@ import logging
 import discord
 from discord.ext import commands
 
-from vertigo.database import Database
-from vertigo.helpers import (
+from ..database import Database
+from ..helpers import (
     attach_gif,
     commands_channel_check,
     extract_id,

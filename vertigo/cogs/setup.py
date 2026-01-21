@@ -7,9 +7,9 @@ import logging
 import discord
 from discord.ext import commands
 
-from vertigo import config
-from vertigo.database import Database
-from vertigo.helpers import make_embed, parse_id_list
+from .. import config
+from ..database import Database
+from ..helpers import make_embed, parse_id_list
 
 logger = logging.getLogger(__name__)
 

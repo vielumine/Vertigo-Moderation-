@@ -8,8 +8,8 @@ import logging
 import discord
 from discord.ext import commands
 
-from vertigo.database import Database
-from vertigo.helpers import make_embed, require_owner, safe_dm
+from ..database import Database
+from ..helpers import make_embed, require_owner, safe_dm
 
 logger = logging.getLogger(__name__)
 

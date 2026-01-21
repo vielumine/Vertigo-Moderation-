@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 import discord
 from discord.ext import commands
 
-from vertigo import config
-from vertigo.database import AISettings, Database
-from vertigo.helpers import (
+from .. import config
+from ..database import AISettings, Database
+from ..helpers import (
     add_loading_reaction,
     get_ai_response,
     is_ai_enabled_for_guild,
@@ -22,7 +22,7 @@ from vertigo.helpers import (
 )
 
 if TYPE_CHECKING:
-    from vertigo.main import VertigoBot
+    from ..main import VertigoBot
 
 logger = logging.getLogger(__name__)
 

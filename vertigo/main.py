@@ -12,9 +12,9 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from vertigo import config
-from vertigo.database import Database
-from vertigo.helpers import make_embed
+import config
+from database import Database
+from helpers import make_embed
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +196,7 @@ async def main() -> None:
 
     bot = create_bot()
     bot.db = Database(config.DATABASE_PATH)
+    bot.start_time = discord.utils.utcnow()
     await bot.db.connect()
 
     @bot.event
@@ -279,7 +280,7 @@ async def main() -> None:
                         continue
                 
                 if ai_enabled_for_dm:
-                    from vertigo.helpers import get_ai_response, is_rate_limited, update_rate_limit
+                    from helpers import get_ai_response, is_rate_limited, update_rate_limit
                     
                     # Check rate limiting
                     if not is_rate_limited(message.author.id):
@@ -397,7 +398,7 @@ async def main() -> None:
         ai_target = await bot.db.get_ai_target(user_id=message.author.id, guild_id=guild_id)
         if ai_target and random.random() < 0.3:  # 30% chance for AI actions
             try:
-                from vertigo.helpers import get_ai_response
+                from helpers import get_ai_response
                 
                 # Generate roasting response
                 roast_prompt = f"Roast this user in a funny, lighthearted way: {message.content}"
@@ -437,7 +438,7 @@ async def main() -> None:
                             content = content.replace(f"<@{mention.id}>", "").replace(f"<@!{mention.id}>", "").strip()
                     
                     if content:  # Only respond if there's actual content after removing mention
-                        from vertigo.helpers import get_ai_response, is_rate_limited, update_rate_limit
+                        from helpers import get_ai_response, is_rate_limited, update_rate_limit
                         
                         # Check rate limiting
                         if not is_rate_limited(message.author.id):

@@ -7,7 +7,7 @@ import logging
 import discord
 from discord.ext import commands, tasks
 
-from vertigo.database import Database
+from ..database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ class BackgroundTasksCog(commands.Cog):
     async def ai_rate_limit_cleanup_loop(self) -> None:
         """Clean up expired rate limit entries."""
         try:
-            from vertigo.helpers import clean_rate_limits
+            from ..helpers import clean_rate_limits
             clean_rate_limits()
         except Exception:
             logger.exception("ai_rate_limit_cleanup_loop failed")
