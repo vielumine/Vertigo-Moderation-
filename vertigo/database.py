@@ -40,6 +40,43 @@ class GuildSettings:
     lock_categories: list[int]
 
 
+@dataclass(slots=True)
+class AISettings:
+    guild_id: int
+    ai_enabled: bool
+    ai_personality: str
+    respond_to_mentions: bool
+    respond_to_dms: bool
+    help_moderation: bool
+
+
+@dataclass(slots=True)
+class AITarget:
+    user_id: int
+    guild_id: int
+    target_by: int
+    timestamp: str
+    notes: str | None
+
+
+@dataclass(slots=True)
+class BotBlacklist:
+    user_id: int
+    blacklisted_by: int
+    reason: str
+    timestamp: str
+
+
+@dataclass(slots=True)
+class TimeoutSettings:
+    guild_id: int
+    phrases: str
+    alert_role_id: int | None
+    alert_channel_id: int | None
+    timeout_duration: int
+    enabled: bool
+
+
 def _csv_to_int_list(value: str | None) -> list[int]:
     if not value:
         return []
@@ -199,6 +236,39 @@ class Database:
                 guild_id        INTEGER PRIMARY KEY,
                 reason          TEXT,
                 timestamp       TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS ai_settings (
+                guild_id INTEGER PRIMARY KEY,
+                ai_enabled BOOLEAN DEFAULT TRUE,
+                ai_personality TEXT DEFAULT 'genz',
+                respond_to_mentions BOOLEAN DEFAULT TRUE,
+                respond_to_dms BOOLEAN DEFAULT FALSE,
+                help_moderation BOOLEAN DEFAULT TRUE
+            );
+
+            CREATE TABLE IF NOT EXISTS ai_targets (
+                user_id INTEGER PRIMARY KEY,
+                guild_id INTEGER NOT NULL,
+                target_by INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                notes TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS bot_blacklist (
+                user_id INTEGER PRIMARY KEY,
+                blacklisted_by INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS timeout_settings (
+                guild_id INTEGER PRIMARY KEY,
+                phrases TEXT DEFAULT '',
+                alert_role_id INTEGER,
+                alert_channel_id INTEGER,
+                timeout_duration INTEGER DEFAULT 86400,
+                enabled BOOLEAN DEFAULT FALSE
             );
             """
         )
@@ -626,3 +696,190 @@ class Database:
     async def get_blacklisted_guilds(self) -> list[aiosqlite.Row]:
         async with self.conn.execute("SELECT * FROM blacklisted_guilds ORDER BY timestamp DESC") as cur:
             return await cur.fetchall()
+
+    # ---------------------------------------------------------------------
+    # AI Settings
+    # ---------------------------------------------------------------------
+
+    async def ensure_ai_settings(self, guild_id: int) -> None:
+        """Create default AI settings for a guild if they do not exist."""
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO ai_settings (guild_id) VALUES (?)",
+            (guild_id,),
+        )
+        await self.conn.commit()
+
+    async def get_ai_settings(self, guild_id: int) -> AISettings:
+        await self.ensure_ai_settings(guild_id)
+        async with self.conn.execute("SELECT * FROM ai_settings WHERE guild_id = ?", (guild_id,)) as cur:
+            row = await cur.fetchone()
+        assert row is not None
+        return AISettings(
+            guild_id=row["guild_id"],
+            ai_enabled=bool(row["ai_enabled"]),
+            ai_personality=row["ai_personality"] or "genz",
+            respond_to_mentions=bool(row["respond_to_mentions"]),
+            respond_to_dms=bool(row["respond_to_dms"]),
+            help_moderation=bool(row["help_moderation"]),
+        )
+
+    async def update_ai_settings(self, guild_id: int, **kwargs: Any) -> None:
+        """Update AI settings with validated values."""
+        if not kwargs:
+            return
+        
+        normalized: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            if key in {"ai_enabled", "respond_to_mentions", "respond_to_dms", "help_moderation"}:
+                normalized[key] = bool(value)
+            elif key == "ai_personality":
+                normalized[key] = str(value)
+        
+        fields = ", ".join(f"{k} = ?" for k in normalized)
+        params = list(normalized.values()) + [guild_id]
+        await self.conn.execute(f"UPDATE ai_settings SET {fields} WHERE guild_id = ?", params)
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # AI Targets
+    # ---------------------------------------------------------------------
+
+    async def add_ai_target(self, *, user_id: int, guild_id: int, target_by: int, notes: str | None = None) -> None:
+        """Add a user to AI targeting list."""
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO ai_targets (user_id, guild_id, target_by, timestamp, notes) VALUES (?, ?, ?, ?, ?)",
+            (user_id, guild_id, target_by, utcnow().isoformat(), notes),
+        )
+        await self.conn.commit()
+
+    async def remove_ai_target(self, *, user_id: int, guild_id: int) -> None:
+        """Remove a user from AI targeting list."""
+        await self.conn.execute("DELETE FROM ai_targets WHERE user_id = ? AND guild_id = ?", (user_id, guild_id))
+        await self.conn.commit()
+
+    async def get_ai_target(self, *, user_id: int, guild_id: int) -> AITarget | None:
+        """Get AI target information."""
+        async with self.conn.execute("SELECT * FROM ai_targets WHERE user_id = ? AND guild_id = ?", (user_id, guild_id)) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return AITarget(
+            user_id=row["user_id"],
+            guild_id=row["guild_id"],
+            target_by=row["target_by"],
+            timestamp=row["timestamp"],
+            notes=row["notes"],
+        )
+
+    async def get_all_ai_targets(self, *, guild_id: int) -> list[AITarget]:
+        """Get all AI targets for a guild."""
+        async with self.conn.execute("SELECT * FROM ai_targets WHERE guild_id = ?", (guild_id,)) as cur:
+            rows = await cur.fetchall()
+        return [
+            AITarget(
+                user_id=row["user_id"],
+                guild_id=row["guild_id"],
+                target_by=row["target_by"],
+                timestamp=row["timestamp"],
+                notes=row["notes"],
+            )
+            for row in rows
+        ]
+
+    # ---------------------------------------------------------------------
+    # Bot Blacklist
+    # ---------------------------------------------------------------------
+
+    async def add_to_blacklist(self, *, user_id: int, blacklisted_by: int, reason: str) -> None:
+        """Add user to bot blacklist."""
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO bot_blacklist (user_id, blacklisted_by, reason, timestamp) VALUES (?, ?, ?, ?)",
+            (user_id, blacklisted_by, reason, utcnow().isoformat()),
+        )
+        await self.conn.commit()
+
+    async def remove_from_blacklist(self, *, user_id: int) -> None:
+        """Remove user from bot blacklist."""
+        await self.conn.execute("DELETE FROM bot_blacklist WHERE user_id = ?", (user_id,))
+        await self.conn.commit()
+
+    async def is_blacklisted(self, *, user_id: int) -> bool:
+        """Check if user is blacklisted."""
+        async with self.conn.execute("SELECT 1 FROM bot_blacklist WHERE user_id = ?", (user_id,)) as cur:
+            return await cur.fetchone() is not None
+
+    async def get_blacklist_entry(self, *, user_id: int) -> BotBlacklist | None:
+        """Get blacklist entry."""
+        async with self.conn.execute("SELECT * FROM bot_blacklist WHERE user_id = ?", (user_id,)) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return BotBlacklist(
+            user_id=row["user_id"],
+            blacklisted_by=row["blacklisted_by"],
+            reason=row["reason"],
+            timestamp=row["timestamp"],
+        )
+
+    async def get_all_blacklisted(self) -> list[BotBlacklist]:
+        """Get all blacklisted users."""
+        async with self.conn.execute("SELECT * FROM bot_blacklist ORDER BY timestamp DESC") as cur:
+            rows = await cur.fetchall()
+        return [
+            BotBlacklist(
+                user_id=row["user_id"],
+                blacklisted_by=row["blacklisted_by"],
+                reason=row["reason"],
+                timestamp=row["timestamp"],
+            )
+            for row in rows
+        ]
+
+    # ---------------------------------------------------------------------
+    # Timeout Settings
+    # ---------------------------------------------------------------------
+
+    async def get_timeout_settings(self, guild_id: int) -> TimeoutSettings:
+        """Get timeout settings for guild."""
+        async with self.conn.execute("SELECT * FROM timeout_settings WHERE guild_id = ?", (guild_id,)) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            # Create default settings
+            await self.conn.execute(
+                "INSERT OR IGNORE INTO timeout_settings (guild_id) VALUES (?)",
+                (guild_id,),
+            )
+            await self.conn.commit()
+            async with self.conn.execute("SELECT * FROM timeout_settings WHERE guild_id = ?", (guild_id,)) as cur:
+                row = await cur.fetchone()
+        
+        assert row is not None
+        return TimeoutSettings(
+            guild_id=row["guild_id"],
+            phrases=row["phrases"] or "",
+            alert_role_id=row["alert_role_id"],
+            alert_channel_id=row["alert_channel_id"],
+            timeout_duration=int(row["timeout_duration"] or 86400),
+            enabled=bool(row["enabled"]),
+        )
+
+    async def update_timeout_settings(self, guild_id: int, **kwargs: Any) -> None:
+        """Update timeout settings."""
+        if not kwargs:
+            return
+        
+        normalized: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            if key == "phrases":
+                normalized[key] = str(value)
+            elif key in {"alert_role_id", "alert_channel_id"}:
+                normalized[key] = value
+            elif key == "timeout_duration":
+                normalized[key] = int(value)
+            elif key == "enabled":
+                normalized[key] = bool(value)
+        
+        fields = ", ".join(f"{k} = ?" for k in normalized)
+        params = list(normalized.values()) + [guild_id]
+        await self.conn.execute(f"UPDATE timeout_settings SET {fields} WHERE guild_id = ?", params)
+        await self.conn.commit()

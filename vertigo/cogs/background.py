@@ -21,6 +21,7 @@ class BackgroundTasksCog(commands.Cog):
         self.temp_role_expiry_loop.start()
         self.staff_flag_expiry_loop.start()
         self.mute_expiry_loop.start()
+        self.ai_rate_limit_cleanup_loop.start()
 
     @property
     def db(self) -> Database:
@@ -123,6 +124,15 @@ class BackgroundTasksCog(commands.Cog):
             await self.db.expire_mute_ids(ids)
         except Exception:
             logger.exception("mute_expiry_loop failed")
+
+    @tasks.loop(minutes=5)
+    async def ai_rate_limit_cleanup_loop(self) -> None:
+        """Clean up expired rate limit entries."""
+        try:
+            from vertigo.helpers import clean_rate_limits
+            clean_rate_limits()
+        except Exception:
+            logger.exception("ai_rate_limit_cleanup_loop failed")
 
     @warn_expiry_loop.before_loop
     @temp_role_expiry_loop.before_loop

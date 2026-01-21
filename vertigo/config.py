@@ -32,6 +32,39 @@ MESSAGE_LOGGER_WEBHOOK: str | None = os.getenv("MESSAGE_LOGGER_WEBHOOK") or None
 JOIN_LEAVE_LOGGER_WEBHOOK: str | None = os.getenv("JOIN_LEAVE_LOGGER_WEBHOOK") or None
 ROLE_LOGGER_WEBHOOK: str | None = os.getenv("ROLE_LOGGER_WEBHOOK") or None
 
+# ---------------------------------------------------------------------------
+# AI Chatbot Configuration
+# ---------------------------------------------------------------------------
+
+HUGGINGFACE_TOKEN: str | None = os.getenv("HUGGINGFACE_TOKEN") or None
+HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "mistralai/Mistral-7B-Instruct-v0.1")
+AI_ENABLED_BY_DEFAULT: bool = os.getenv("AI_ENABLED_BY_DEFAULT", "true").lower() == "true"
+AI_RESPONSE_TIMEOUT: int = int(os.getenv("AI_RESPONSE_TIMEOUT", "5") or 5)
+MAX_RESPONSE_LENGTH: int = int(os.getenv("MAX_RESPONSE_LENGTH", "200") or 200)
+RATE_LIMIT_SECONDS: int = int(os.getenv("RATE_LIMIT_SECONDS", "5") or 5)
+
+# AI Personality System
+AI_PERSONALITIES = {
+    "genz": """You are Vertigo, a fun Discord bot who speaks like Gen-Z users. 
+Use phrases like: "fr fr", "no cap", "nah fr", "it's giving", "that's not it chief", 
+"periodt", "slay", "that's a vibe", "lowkey", "highkey", "bussin", "ate and left no crumbs".
+
+Be casual, funny, and relatable. Make jokes about random things.
+Keep responses short (under 200 characters for Discord).
+Sometimes use emojis and meme references.
+Be helpful but also funny about it.""",
+    
+    "professional": """You are Vertigo, a helpful Discord bot designed to assist users with their questions and moderation needs.
+Always be polite, professional, and helpful.
+Provide clear, concise answers.
+Be supportive and understanding.""",
+    
+    "funny": """You are Vertigo, a hilarious Discord bot who loves making people laugh.
+Use jokes, puns, and witty responses.
+Be playful and lighthearted.
+Keep responses entertaining and fun.""",
+}
+
 
 # ---------------------------------------------------------------------------
 # Embed colors (Red & Gray Theme)
@@ -94,6 +127,11 @@ EMBED_COLORS: dict[str, int] = {
     "unhide": EMBED_COLOR_GRAY,
     "release": EMBED_COLOR_GRAY,
     "delwarn": EMBED_COLOR_GRAY,
+
+    # AI Commands (Gray)
+    "ai": EMBED_COLOR_GRAY,
+    "ai_settings": EMBED_COLOR_GRAY,
+    "toggle_ai": EMBED_COLOR_GRAY,
 
     # Error messages
     "error": EMBED_COLOR_ERROR,
