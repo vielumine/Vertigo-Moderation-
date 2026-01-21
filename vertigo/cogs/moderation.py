@@ -29,6 +29,127 @@ from vertigo.helpers import (
 logger = logging.getLogger(__name__)
 
 
+class ModerationUndoView(discord.ui.View):
+    """View for undoing moderation actions."""
+    
+    def __init__(self, action_type: str, user_id: int, guild_id: int, message_id: int, timeout: float = 300):
+        super().__init__(timeout=timeout)
+        self.action_type = action_type
+        self.user_id = user_id
+        self.guild_id = guild_id
+        self.message_id = message_id
+        
+        # Dynamically add buttons based on action type
+        if action_type == "warn":
+            self.add_item(discord.ui.Button(label="Undo Warn", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_warn"))
+        elif action_type == "mute":
+            self.add_item(discord.ui.Button(label="Undo Mute", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_mute"))
+        elif action_type == "ban":
+            self.add_item(discord.ui.Button(label="Undo Ban", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_ban"))
+        elif action_type in ["wm", "wmr"]:
+            self.add_item(discord.ui.Button(label="Undo Warn Only", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_warn_only"))
+            self.add_item(discord.ui.Button(label="Undo Mute Only", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_mute_only"))
+            self.add_item(discord.ui.Button(label="Undo Warn & Mute", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_both"))
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user and not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Only administrators can undo actions.", ephemeral=True)
+            return False
+        return True
+    
+    @discord.ui.button(label="Undo Warn", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_warn")
+    async def undo_warn_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._undo_warn(interaction)
+    
+    @discord.ui.button(label="Undo Mute", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_mute")
+    async def undo_mute_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._undo_mute(interaction)
+    
+    @discord.ui.button(label="Undo Warn Only", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_warn_only")
+    async def undo_warn_only_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._undo_warn(interaction)
+    
+    @discord.ui.button(label="Undo Mute Only", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_mute_only")
+    async def undo_mute_only_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._undo_mute(interaction)
+    
+    @discord.ui.button(label="Undo Warn & Mute", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_both")
+    async def undo_both_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._undo_warn(interaction)
+        await self._undo_mute(interaction)
+    
+    @discord.ui.button(label="Undo Ban", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_ban")
+    async def undo_ban_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._undo_ban(interaction)
+    
+    async def _undo_warn(self, interaction: discord.Interaction) -> None:
+        try:
+            # Get the most recent warning for this user
+            async with interaction.client.db.conn.execute(
+                "SELECT id FROM warnings WHERE guild_id = ? AND user_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1",
+                (self.guild_id, self.user_id)
+            ) as cursor:
+                row = await cursor.fetchone()
+                
+            if row:
+                await interaction.client.db.deactivate_warning(warn_id=row["id"], guild_id=self.guild_id)
+                await interaction.client.db.add_modlog(
+                    guild_id=self.guild_id,
+                    action_type="undo_warn",
+                    user_id=self.user_id,
+                    moderator_id=interaction.user.id,
+                    reason=f"Undo warn (original message: {self.message_id})"
+                )
+                await interaction.response.send_message("✅ Warn undone successfully.", ephemeral=True)
+            else:
+                await interaction.response.send_message("❌ No active warnings found to undo.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Undo warn error: {e}")
+            await interaction.response.send_message("❌ Failed to undo warn.", ephemeral=True)
+    
+    async def _undo_mute(self, interaction: discord.Interaction) -> None:
+        try:
+            # Remove timeout
+            guild = interaction.guild
+            member = guild.get_member(self.user_id)
+            if member:
+                await member.timeout(None, reason="Undo mute")
+                await interaction.client.db.add_modlog(
+                    guild_id=self.guild_id,
+                    action_type="undo_mute",
+                    user_id=self.user_id,
+                    moderator_id=interaction.user.id,
+                    reason=f"Undo mute (original message: {self.message_id})"
+                )
+                await interaction.response.send_message("✅ Mute undone successfully.", ephemeral=True)
+            else:
+                await interaction.response.send_message("❌ User not found in server.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Undo mute error: {e}")
+            await interaction.response.send_message("❌ Failed to undo mute.", ephemeral=True)
+    
+    async def _undo_ban(self, interaction: discord.Interaction) -> None:
+        try:
+            # Unban the user
+            guild = interaction.guild
+            user = await interaction.client.fetch_user(self.user_id)
+            if user:
+                await guild.unban(user, reason="Undo ban")
+                await interaction.client.db.add_modlog(
+                    guild_id=self.guild_id,
+                    action_type="undo_ban",
+                    user_id=self.user_id,
+                    moderator_id=interaction.user.id,
+                    reason=f"Undo ban (original message: {self.message_id})"
+                )
+                await interaction.response.send_message("✅ Ban undone successfully.", ephemeral=True)
+            else:
+                await interaction.response.send_message("❌ User not found.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Undo ban error: {e}")
+            await interaction.response.send_message("❌ Failed to undo ban.", ephemeral=True)
+
+
 class ModerationCog(commands.Cog):
     """Moderator+ commands."""
 
@@ -96,6 +217,10 @@ class ModerationCog(commands.Cog):
 
         message = await ctx.send(embed=embed, file=file)
         message_id = message.id
+
+        # Add undo view
+        undo_view = ModerationUndoView("warn", member.id, ctx.guild.id, message_id)
+        await message.edit(view=undo_view)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -248,6 +373,10 @@ class ModerationCog(commands.Cog):
         embed, file = attach_gif(embed, gif_key="MUTE")
         message = await ctx.send(embed=embed, file=file)
 
+        # Add undo view
+        undo_view = ModerationUndoView("mute", member.id, ctx.guild.id, message.id)
+        await message.edit(view=undo_view)
+
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
             action_type="mute",
@@ -373,6 +502,10 @@ class ModerationCog(commands.Cog):
         embed, file = attach_gif(embed, gif_key="BAN")
         message = await ctx.send(embed=embed, file=file)
 
+        # Add undo view
+        undo_view = ModerationUndoView("ban", member.id, ctx.guild.id, message.id)
+        await message.edit(view=undo_view)
+
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
             action_type="ban",
@@ -473,6 +606,10 @@ class ModerationCog(commands.Cog):
         )
         embed, file = attach_gif(embed, gif_key="WARN_AND_MUTE")
         message = await ctx.send(embed=embed, file=file)
+
+        # Add undo view
+        undo_view = ModerationUndoView("wm", member.id, ctx.guild.id, message.id)
+        await message.edit(view=undo_view)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]

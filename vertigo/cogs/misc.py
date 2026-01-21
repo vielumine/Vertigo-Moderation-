@@ -320,6 +320,14 @@ class MiscCog(commands.Cog):
                 inline=True
             )
             
+            # Send message with undo view
+            message = await ctx.send(embed=embed)
+            
+            # Add undo view for WMR
+            from vertigo.cogs.moderation import ModerationUndoView
+            undo_view = ModerationUndoView("wmr", member.id, ctx.guild.id, message.id)
+            await message.edit(view=undo_view)
+            
             # Add to modlogs
             await self.db.add_modlog(
                 guild_id=ctx.guild.id,

@@ -17,6 +17,7 @@ from vertigo.helpers import (
     add_loading_reaction,
     extract_id,
     make_embed,
+    require_admin,
     require_owner,
     safe_dm,
     utcnow,
@@ -453,7 +454,7 @@ class AIModerationCog(commands.Cog):
     # ============================
     
     @commands.command(name="timeoutpanel")
-    @require_owner()
+    @require_admin()
     async def timeoutpanel(self, ctx: commands.Context) -> None:
         """Open the timeout panel for managing prohibited terms."""
         try:
