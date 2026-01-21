@@ -196,6 +196,7 @@ async def main() -> None:
 
     bot = create_bot()
     bot.db = Database(config.DATABASE_PATH)
+    bot.start_time = discord.utils.utcnow()
     await bot.db.connect()
 
     @bot.event

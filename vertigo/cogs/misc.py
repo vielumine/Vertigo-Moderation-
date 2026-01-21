@@ -110,6 +110,48 @@ class MiscCog(commands.Cog):
         embed.add_field(name="🔒 Verification", value=str(guild.verification_level).title(), inline=True)
         await ctx.send(embed=embed)
 
+    @commands.command(name="botinfo")
+    @commands.guild_only()
+    @commands_channel_check()
+    @require_level("moderator")
+    async def botinfo(self, ctx: commands.Context) -> None:
+        """Show bot information and statistics."""
+        bot_user = ctx.bot.user
+        
+        # Get bot uptime
+        start_time = getattr(self.bot, 'start_time', None)
+        if start_time:
+            uptime = discord.utils.utcnow() - start_time
+            uptime_str = str(uptime).split('.')[0]  # Remove microseconds
+        else:
+            uptime_str = "Unknown"
+        
+        # Count guilds and members
+        guild_count = len(ctx.bot.guilds)
+        total_members = sum(guild.member_count or len(guild.members) for guild in ctx.bot.guilds)
+        
+        embed = make_embed(
+            action="botinfo",
+            title=f"🤖 Bot Information - {bot_user.display_name}",
+        )
+        
+        if bot_user.display_avatar:
+            embed.set_thumbnail(url=bot_user.display_avatar.url)
+        
+        embed.add_field(name="📍 Bot ID", value=str(bot_user.id), inline=True)
+        embed.add_field(name="🏷️ Tag", value=f"#{bot_user.discriminator}", inline=True)
+        embed.add_field(name="📅 Created", value=_fmt_dt(bot_user.created_at), inline=True)
+        
+        embed.add_field(name="🕐 Uptime", value=uptime_str, inline=True)
+        embed.add_field(name="🏰 Servers", value=str(guild_count), inline=True)
+        embed.add_field(name="👥 Total Users", value=str(total_members), inline=True)
+        
+        embed.add_field(name="📦 Library", value="discord.py", inline=True)
+        embed.add_field(name="🔧 Prefix", value="!" if not ctx.guild else (await self.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)).prefix or "!", inline=True)
+        embed.add_field(name="⚙️ Version", value="2.0", inline=True)
+        
+        await ctx.send(embed=embed)
+
     @commands.command(name="checkavatar")
     @commands.guild_only()
     @commands_channel_check()
@@ -434,6 +476,7 @@ class MiscCog(commands.Cog):
                 description=(
                     f"`{prefix}userinfo <user>`\n"
                     f"`{prefix}serverinfo`\n"
+                    f"`{prefix}botinfo`\n"
                     f"`{prefix}checkavatar <user>`\n"
                     f"`{prefix}checkbanner <user>`\n"
                     f"`{prefix}members`\n"
