@@ -9,6 +9,7 @@ This module contains:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -17,10 +18,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 
 import discord
+import requests
 from discord.ext import commands
 
 from vertigo import config
-from vertigo.database import GuildSettings
+from vertigo.database import AISettings, GuildSettings
 
 logger = logging.getLogger(__name__)
 
@@ -350,3 +352,169 @@ async def timed_rest_call(coro: Any) -> tuple[Any, float]:
     start = time.perf_counter()
     result = await coro
     return result, (time.perf_counter() - start) * 1000.0
+
+
+# ---------------------------------------------------------------------------
+# AI Chatbot Helpers
+# ---------------------------------------------------------------------------
+
+# Simple rate limiting storage
+_ai_rate_limits: dict[int, float] = {}
+
+
+def is_rate_limited(user_id: int) -> bool:
+    """Check if user is rate limited for AI responses."""
+    last_request = _ai_rate_limits.get(user_id, 0)
+    return (time.time() - last_request) < config.RATE_LIMIT_SECONDS
+
+
+def update_rate_limit(user_id: int) -> None:
+    """Update user's rate limit timestamp."""
+    _ai_rate_limits[user_id] = time.time()
+
+
+def clean_rate_limits() -> None:
+    """Clean up old rate limit entries."""
+    current_time = time.time()
+    expired_users = [
+        user_id for user_id, last_request in _ai_rate_limits.items()
+        if current_time - last_request > 300  # 5 minutes
+    ]
+    for user_id in expired_users:
+        _ai_rate_limits.pop(user_id, None)
+
+
+def get_personality_prompt(personality: str = "genz") -> str:
+    """Get the system prompt for the specified personality."""
+    return config.AI_PERSONALITIES.get(personality, config.AI_PERSONALITIES["genz"])
+
+
+def truncate_response(text: str, max_length: int = config.MAX_RESPONSE_LENGTH) -> str:
+    """Truncate response to fit Discord's character limit."""
+    if len(text) <= max_length:
+        return text
+    
+    # Try to truncate at a word boundary
+    truncated = text[:max_length-3]
+    last_space = truncated.rfind(' ')
+    if last_space > max_length * 0.7:  # Only truncate at word if it's reasonable
+        truncated = truncated[:last_space]
+    
+    return truncated + "..."
+
+
+async def call_huggingface_api(user_message: str, personality: str = "genz") -> str:
+    """Call HuggingFace API to get AI response."""
+    if not config.HUGGINGFACE_TOKEN:
+        raise ValueError("HUGGINGFACE_TOKEN not configured")
+    
+    headers = {
+        "Authorization": f"Bearer {config.HUGGINGFACE_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    
+    system_prompt = get_personality_prompt(personality)
+    
+    # Build the input for the model
+    full_prompt = f"{system_prompt}\n\nUser: {user_message}\nAI:"
+    
+    payload = {
+        "inputs": full_prompt,
+        "parameters": {
+            "max_new_tokens": 100,
+            "temperature": 0.8,
+            "do_sample": True,
+            "top_p": 0.9,
+        }
+    }
+    
+    try:
+        response = requests.post(
+            f"https://api-inference.huggingface.co/models/{config.HUGGINGFACE_MODEL}",
+            headers=headers,
+            json=payload,
+            timeout=config.AI_RESPONSE_TIMEOUT
+        )
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        # Extract the generated text
+        if isinstance(result, list) and len(result) > 0:
+            generated_text = result[0].get("generated_text", "")
+            if generated_text:
+                # Remove the input prompt to get just the response
+                response_text = generated_text.replace(full_prompt, "").strip()
+                return response_text
+        elif isinstance(result, dict):
+            generated_text = result.get("generated_text", "")
+            if generated_text:
+                response_text = generated_text.replace(full_prompt, "").strip()
+                return response_text
+        
+        # Fallback response
+        return "nah fr fr the vibes are off rn, try again bestie 😅"
+        
+    except requests.exceptions.Timeout:
+        return "yo the AI is taking too long to respond, try again in a bit ⏰"
+    except requests.exceptions.RequestException as e:
+        logger.error("HuggingFace API error: %s", e)
+        return "nah the AI service is down rn, try again later 💀"
+    except Exception as e:
+        logger.error("Unexpected AI error: %s", e)
+        return "something went wrong with the AI, try again bestie 😅"
+
+
+async def get_ai_response(user_message: str, personality: str = "genz") -> str:
+    """Get AI response with proper formatting and safety."""
+    try:
+        response = await call_huggingface_api(user_message, personality)
+        
+        # Clean up the response
+        response = response.strip()
+        
+        # Remove any system prompts or instructions that might have leaked
+        response = re.sub(r"(You are|User:|AI:|Human:|Assistant:).*$", "", response, flags=re.MULTILINE)
+        response = response.strip()
+        
+        # Ensure response is not empty
+        if not response:
+            response = "nah i got nothing rn, try asking something else 💭"
+        
+        # Truncate if needed
+        response = truncate_response(response)
+        
+        return response
+        
+    except Exception as e:
+        logger.error("AI response error: %s", e)
+        return "nah the AI vibes are off rn, try again later 😅"
+
+
+async def is_ai_enabled_for_guild(guild_id: int, db) -> bool:
+    """Check if AI is enabled for the guild."""
+    try:
+        ai_settings = await db.get_ai_settings(guild_id)
+        return ai_settings.ai_enabled
+    except Exception:
+        # If there's an error, default to enabled
+        return True
+
+
+async def is_ai_enabled_for_dms(guild_id: int, db) -> bool:
+    """Check if AI is enabled for DMs in the guild."""
+    try:
+        ai_settings = await db.get_ai_settings(guild_id)
+        return ai_settings.respond_to_dms and ai_settings.ai_enabled
+    except Exception:
+        return False
+
+
+def should_help_with_moderation(message_content: str) -> bool:
+    """Check if the message appears to be asking for moderation help."""
+    moderation_keywords = [
+        "report", "spam", "toxic", "rule", "break", "warn", "ban", "kick", 
+        "mute", "punishment", "behavior", "abuse", "harassment", "inappropriate"
+    ]
+    message_lower = message_content.lower()
+    return any(keyword in message_lower for keyword in moderation_keywords)

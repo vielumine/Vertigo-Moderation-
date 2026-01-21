@@ -40,6 +40,16 @@ class GuildSettings:
     lock_categories: list[int]
 
 
+@dataclass(slots=True)
+class AISettings:
+    guild_id: int
+    ai_enabled: bool
+    ai_personality: str
+    respond_to_mentions: bool
+    respond_to_dms: bool
+    help_moderation: bool
+
+
 def _csv_to_int_list(value: str | None) -> list[int]:
     if not value:
         return []
@@ -199,6 +209,15 @@ class Database:
                 guild_id        INTEGER PRIMARY KEY,
                 reason          TEXT,
                 timestamp       TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS ai_settings (
+                guild_id INTEGER PRIMARY KEY,
+                ai_enabled BOOLEAN DEFAULT TRUE,
+                ai_personality TEXT DEFAULT 'genz',
+                respond_to_mentions BOOLEAN DEFAULT TRUE,
+                respond_to_dms BOOLEAN DEFAULT FALSE,
+                help_moderation BOOLEAN DEFAULT TRUE
             );
             """
         )
@@ -626,3 +645,46 @@ class Database:
     async def get_blacklisted_guilds(self) -> list[aiosqlite.Row]:
         async with self.conn.execute("SELECT * FROM blacklisted_guilds ORDER BY timestamp DESC") as cur:
             return await cur.fetchall()
+
+    # ---------------------------------------------------------------------
+    # AI Settings
+    # ---------------------------------------------------------------------
+
+    async def ensure_ai_settings(self, guild_id: int) -> None:
+        """Create default AI settings for a guild if they do not exist."""
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO ai_settings (guild_id) VALUES (?)",
+            (guild_id,),
+        )
+        await self.conn.commit()
+
+    async def get_ai_settings(self, guild_id: int) -> AISettings:
+        await self.ensure_ai_settings(guild_id)
+        async with self.conn.execute("SELECT * FROM ai_settings WHERE guild_id = ?", (guild_id,)) as cur:
+            row = await cur.fetchone()
+        assert row is not None
+        return AISettings(
+            guild_id=row["guild_id"],
+            ai_enabled=bool(row["ai_enabled"]),
+            ai_personality=row["ai_personality"] or "genz",
+            respond_to_mentions=bool(row["respond_to_mentions"]),
+            respond_to_dms=bool(row["respond_to_dms"]),
+            help_moderation=bool(row["help_moderation"]),
+        )
+
+    async def update_ai_settings(self, guild_id: int, **kwargs: Any) -> None:
+        """Update AI settings with validated values."""
+        if not kwargs:
+            return
+        
+        normalized: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            if key in {"ai_enabled", "respond_to_mentions", "respond_to_dms", "help_moderation"}:
+                normalized[key] = bool(value)
+            elif key == "ai_personality":
+                normalized[key] = str(value)
+        
+        fields = ", ".join(f"{k} = ?" for k in normalized)
+        params = list(normalized.values()) + [guild_id]
+        await self.conn.execute(f"UPDATE ai_settings SET {fields} WHERE guild_id = ?", params)
+        await self.conn.commit()
