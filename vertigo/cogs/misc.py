@@ -325,7 +325,7 @@ class MiscCog(commands.Cog):
             
             # Add undo view for WMR
             from vertigo.cogs.moderation import ModerationUndoView
-            undo_view = ModerationUndoView("wmr", member.id, ctx.guild.id, message.id)
+            undo_view = ModerationUndoView("wmr", member.id, ctx.guild.id, message.id, ctx.author.id)
             await message.edit(view=undo_view)
             
             # Add to modlogs

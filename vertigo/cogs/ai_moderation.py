@@ -474,6 +474,7 @@ class AIModerationCog(commands.Cog):
             
             # Create buttons for the panel
             view = TimeoutPanelView(settings, self.bot, ctx.guild.id)
+            view.original_author_id = ctx.author.id  # Add this for permission checking
             
             message = await ctx.send(embed=embed, view=view)
             view.message = message
@@ -498,10 +499,12 @@ class TimeoutPanelView(discord.ui.View):
         self.guild_id = guild_id
         self.message: discord.Message | None = None
         self.current_page = 0
+        self.original_author_id: int | None = None
     
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user and interaction.user.id != config.OWNER_ID:
-            await interaction.response.send_message("Only the bot owner can use these controls.", ephemeral=True)
+        # Only the person who summoned the panel can interact with it
+        if self.original_author_id and interaction.user.id != self.original_author_id:
+            await interaction.response.send_message("Only the person who opened this panel can use these controls.", ephemeral=True)
             return False
         return True
     
@@ -558,6 +561,7 @@ class TimeoutPanelView(discord.ui.View):
         
         # Create paginated view
         view = PhrasesView(phrases, self.settings, self.bot, self.guild_id)
+        view.original_author_id = self.original_author_id  # Set the original author ID
         await interaction.response.send_message(view=view, ephemeral=True)
     
     async def create_embed(self) -> discord.Embed:
@@ -754,10 +758,12 @@ class PhrasesView(discord.ui.View):
         self.guild_id = guild_id
         self.current_page = 0
         self.phrases_per_page = 5
+        self.original_author_id: int | None = None
     
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user and interaction.user.id != config.OWNER_ID:
-            await interaction.response.send_message("Only the bot owner can use these controls.", ephemeral=True)
+        # Only the person who opened the phrases view can interact with it
+        if self.original_author_id and interaction.user.id != self.original_author_id:
+            await interaction.response.send_message("Only the person who opened this view can use these controls.", ephemeral=True)
             return False
         return True
     

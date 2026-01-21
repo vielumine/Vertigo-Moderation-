@@ -22,13 +22,18 @@ logger = logging.getLogger(__name__)
 class TimeoutActionView(discord.ui.View):
     """View for timeout alert actions."""
     
-    def __init__(self, user_id: int, guild_id: int, alert_message_id: int, timeout: float = 300):
+    def __init__(self, user_id: int, guild_id: int, alert_message_id: int, original_author_id: int, timeout: float = 300):
         super().__init__(timeout=timeout)
         self.user_id = user_id
         self.guild_id = guild_id
         self.alert_message_id = alert_message_id
+        self.original_author_id = original_author_id
     
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        # Only the person who took the action can interact with the buttons
+        if interaction.user.id != self.original_author_id:
+            await interaction.response.send_message("Only the person who sent this alert can take actions.", ephemeral=True)
+            return False
         if interaction.user and not any(role.permissions.administrator or role.permissions.moderate_members 
                                       for role in interaction.user.roles):
             await interaction.response.send_message("Only administrators and moderators can take actions.", ephemeral=True)
@@ -126,6 +131,7 @@ COGS: Sequence[str] = (
     "vertigo.cogs.member",
     "vertigo.cogs.misc",
     "vertigo.cogs.owner",
+    "vertigo.cogs.owner_commands",
     "vertigo.cogs.ai",
     "vertigo.cogs.ai_moderation",
 )
@@ -368,7 +374,7 @@ async def main() -> None:
                                     )
                                     
                                     # Add action buttons to alert
-                                    view = TimeoutActionView(member.id, guild_id, alert_message.id)
+                                    view = TimeoutActionView(member.id, guild_id, alert_message.id, bot.user.id)
                                     await alert_message.edit(view=view)
                                     
                                     # Add to modlogs

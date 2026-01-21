@@ -32,12 +32,13 @@ logger = logging.getLogger(__name__)
 class ModerationUndoView(discord.ui.View):
     """View for undoing moderation actions."""
     
-    def __init__(self, action_type: str, user_id: int, guild_id: int, message_id: int, timeout: float = 300):
+    def __init__(self, action_type: str, user_id: int, guild_id: int, message_id: int, original_author_id: int, timeout: float = 300):
         super().__init__(timeout=timeout)
         self.action_type = action_type
         self.user_id = user_id
         self.guild_id = guild_id
         self.message_id = message_id
+        self.original_author_id = original_author_id
         
         # Dynamically add buttons based on action type
         if action_type == "warn":
@@ -52,8 +53,9 @@ class ModerationUndoView(discord.ui.View):
             self.add_item(discord.ui.Button(label="Undo Warn & Mute", style=discord.ButtonStyle.secondary, emoji="↩️", custom_id="undo_both"))
     
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Only administrators can undo actions.", ephemeral=True)
+        # Only the person who summoned the command can undo actions
+        if interaction.user.id != self.original_author_id:
+            await interaction.response.send_message("Only the person who performed this action can undo it.", ephemeral=True)
             return False
         return True
     
@@ -219,7 +221,7 @@ class ModerationCog(commands.Cog):
         message_id = message.id
 
         # Add undo view
-        undo_view = ModerationUndoView("warn", member.id, ctx.guild.id, message_id)
+        undo_view = ModerationUndoView("warn", member.id, ctx.guild.id, message_id, ctx.author.id)
         await message.edit(view=undo_view)
 
         await self.db.add_modlog(
@@ -374,7 +376,7 @@ class ModerationCog(commands.Cog):
         message = await ctx.send(embed=embed, file=file)
 
         # Add undo view
-        undo_view = ModerationUndoView("mute", member.id, ctx.guild.id, message.id)
+        undo_view = ModerationUndoView("mute", member.id, ctx.guild.id, message.id, ctx.author.id)
         await message.edit(view=undo_view)
 
         await self.db.add_modlog(
@@ -503,7 +505,7 @@ class ModerationCog(commands.Cog):
         message = await ctx.send(embed=embed, file=file)
 
         # Add undo view
-        undo_view = ModerationUndoView("ban", member.id, ctx.guild.id, message.id)
+        undo_view = ModerationUndoView("ban", member.id, ctx.guild.id, message.id, ctx.author.id)
         await message.edit(view=undo_view)
 
         await self.db.add_modlog(
@@ -608,7 +610,7 @@ class ModerationCog(commands.Cog):
         message = await ctx.send(embed=embed, file=file)
 
         # Add undo view
-        undo_view = ModerationUndoView("wm", member.id, ctx.guild.id, message.id)
+        undo_view = ModerationUndoView("wm", member.id, ctx.guild.id, message.id, ctx.author.id)
         await message.edit(view=undo_view)
 
         await self.db.add_modlog(
