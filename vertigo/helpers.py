@@ -176,7 +176,7 @@ def make_embed(*, action: str, title: str, description: str | None = None) -> di
 
 def attach_gif(embed: discord.Embed, *, gif_key: str, filename: str = "action.gif") -> tuple[discord.Embed, discord.File | None]:
     gif_url = config.get_gif_url(gif_key)
-    embed.set_thumbnail(url=gif_url)
+    embed.set_image(url=gif_url)
     return embed, None
 
 

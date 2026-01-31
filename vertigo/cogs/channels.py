@@ -202,7 +202,6 @@ class ChannelsCog(commands.Cog):
 
     @commands.command(name="message")
     @commands.guild_only()
-    @commands_channel_check()
     @require_level("head_mod")
     async def message(self, ctx: commands.Context, channel: discord.TextChannel, *, message: str) -> None:
         """Send a plain text message to a channel."""
@@ -226,7 +225,6 @@ class ChannelsCog(commands.Cog):
 
     @commands.command(name="editmess")
     @commands.guild_only()
-    @commands_channel_check()
     @require_level("head_mod")
     async def editmess(self, ctx: commands.Context, message_id: int, *, new_message: str) -> None:
         msg = await self._fetch_message(ctx, message_id)
@@ -242,7 +240,6 @@ class ChannelsCog(commands.Cog):
 
     @commands.command(name="replymess")
     @commands.guild_only()
-    @commands_channel_check()
     @require_level("head_mod")
     async def replymess(self, ctx: commands.Context, message_id: int, *, reply: str) -> None:
         msg = await self._fetch_message(ctx, message_id)
@@ -258,7 +255,6 @@ class ChannelsCog(commands.Cog):
 
     @commands.command(name="deletemess")
     @commands.guild_only()
-    @commands_channel_check()
     @require_level("head_mod")
     async def deletemess(self, ctx: commands.Context, message_id: int) -> None:
         msg = await self._fetch_message(ctx, message_id)

@@ -394,7 +394,7 @@ class Database:
             """
             SELECT * FROM warnings
             WHERE guild_id = ? AND user_id = ? AND is_active = 1
-            ORDER BY id DESC
+            ORDER BY id ASC
             """,
             (guild_id, user_id),
         ) as cur:
