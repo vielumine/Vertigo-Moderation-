@@ -30,14 +30,19 @@ class TimeoutActionView(discord.ui.View):
         self.original_author_id = original_author_id
     
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        # Only the person who took the action can interact with the buttons
-        if interaction.user.id != self.original_author_id:
-            await interaction.response.send_message("Only the person who sent this alert can take actions.", ephemeral=True)
-            return False
-        if interaction.user and not any(role.permissions.administrator or role.permissions.moderate_members 
-                                      for role in interaction.user.roles):
+        # Check if interaction user is admin/mod
+        is_mod = any(role.permissions.administrator or role.permissions.moderate_members 
+                     for role in interaction.user.roles)
+        if not is_mod:
             await interaction.response.send_message("Only administrators and moderators can take actions.", ephemeral=True)
             return False
+            
+        # If it's a user-initiated alert, only that user can act. 
+        # If it's bot-initiated (original_author_id is bot), any mod can act.
+        if self.original_author_id != interaction.client.user.id and interaction.user.id != self.original_author_id:
+            await interaction.response.send_message("Only the person who sent this alert can take actions.", ephemeral=True)
+            return False
+            
         return True
     
     @discord.ui.button(label="Unmute", style=discord.ButtonStyle.success, emoji="🔓")
@@ -75,19 +80,24 @@ class ActionReasonModal(discord.ui.Modal):
     
     async def callback(self, interaction: discord.Interaction) -> None:
         reason = self.children[0].value
+        await interaction.response.defer(ephemeral=True)
         
         try:
             guild = interaction.guild
+            if not guild:
+                await interaction.followup.send("Guild not found.", ephemeral=True)
+                return
+                
             member = guild.get_member(self.user_id)
             
             if not member:
-                await interaction.response.send_message("User not found in server.", ephemeral=True)
+                await interaction.followup.send("User not found in server.", ephemeral=True)
                 return
             
             if self.action_type == "unmute":
                 # Remove timeout
                 await member.timeout(None, reason=reason)
-                await interaction.response.send_message(f"✅ Unmuted {member.mention} - {reason}", ephemeral=True)
+                await interaction.followup.send(f"✅ Unmuted {member.mention} - {reason}", ephemeral=True)
                 
             elif self.action_type == "warn":
                 # Add warning
@@ -98,12 +108,12 @@ class ActionReasonModal(discord.ui.Modal):
                     reason=f"Timeout Alert: {reason}",
                     warn_days=14
                 )
-                await interaction.response.send_message(f"✅ Warned {member.mention} - {reason}", ephemeral=True)
+                await interaction.followup.send(f"✅ Warned {member.mention} - {reason}", ephemeral=True)
                 
             elif self.action_type == "ban":
                 # Ban user
                 await member.ban(reason=f"Timeout Alert: {reason}")
-                await interaction.response.send_message(f"✅ Banned {member.mention} - {reason}", ephemeral=True)
+                await interaction.followup.send(f"✅ Banned {member.mention} - {reason}", ephemeral=True)
             
             # Add to modlogs
             await interaction.client.db.add_modlog(
@@ -116,7 +126,7 @@ class ActionReasonModal(discord.ui.Modal):
             
         except Exception as e:
             logger.error(f"Timeout action failed: {e}")
-            await interaction.response.send_message("Failed to perform action.", ephemeral=True)
+            await interaction.followup.send("Failed to perform action.", ephemeral=True)
 
 
 COGS: Sequence[str] = (
@@ -261,6 +271,18 @@ async def main() -> None:
         
         # Handle DM messages
         if message.guild is None:
+            # Forward DM to owner
+            from helpers import notify_owner
+            owner_embed = make_embed(
+                action="dm_forward",
+                title="📥 New DM Received",
+                description=f"**From:** {message.author} (`{message.author.id}`)\n\n**Content:**\n{message.content}"
+            )
+            if message.attachments:
+                owner_embed.add_field(name="Attachments", value=f"{len(message.attachments)} attachment(s)")
+                
+            await notify_owner(bot, embed=owner_embed)
+            
             # Check if this is a DM and AI should respond
             try:
                 # For DMs, we need to check if AI is enabled for DMs

@@ -21,7 +21,7 @@ class OwnerCommandsCog(commands.Cog):
     
     @commands.command(name="commands", aliases=["cmd", "help_all"])
     @require_owner()
-    async def commands(self, ctx: commands.Context) -> None:
+    async def show_all_commands(self, ctx: commands.Context) -> None:
         """Show all available commands organized by category."""
         try:
             # Create the main embed
