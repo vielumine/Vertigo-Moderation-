@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 
 from ..database import Database
-from ..helpers import commands_channel_check, make_embed, safe_dm
+from ..helpers import commands_channel_check, make_embed
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +27,15 @@ class MemberCog(commands.Cog):
     async def mywarns(self, ctx: commands.Context) -> None:
         rows = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=ctx.author.id)  # type: ignore[union-attr]
         if not rows:
-            await safe_dm(ctx.author, embed=make_embed(action="mywarns", title="⚠️ Your Warnings", description="You have no active warnings."))
-            await ctx.reply("Sent you a DM.", delete_after=5)
+            embed = make_embed(action="mywarns", title="⚠️ Your Warnings", description="You have no active warnings.")
+            await ctx.send(embed=embed)
             return
 
         embed = make_embed(action="mywarns", title="⚠️ Your Active Warnings")
         for row in rows[:10]:
             embed.add_field(name=f"📍 ID {row['id']}", value=f"📝 Reason: {row['reason']}\n⏱️ Expires: {row['expires_at']}", inline=False)
 
-        await safe_dm(ctx.author, embed=embed)
-        await ctx.reply("Sent you a DM.", delete_after=5)
+        await ctx.send(embed=embed)
 
     @commands.command(name="myavatar")
     @commands.guild_only()
@@ -45,8 +44,7 @@ class MemberCog(commands.Cog):
         user = ctx.author
         embed = make_embed(action="myavatar", title="🖼️ Your Avatar")
         embed.set_image(url=user.display_avatar.url)
-        await safe_dm(user, embed=embed)
-        await ctx.reply("Sent you a DM.", delete_after=5)
+        await ctx.send(embed=embed)
 
     @commands.command(name="mybanner")
     @commands.guild_only()
@@ -60,8 +58,7 @@ class MemberCog(commands.Cog):
             embed.add_field(name="🔗 URL", value=banner_url, inline=False)
         else:
             embed.description = "You have no banner."
-        await safe_dm(ctx.author, embed=embed)
-        await ctx.reply("Sent you a DM.", delete_after=5)
+        await ctx.send(embed=embed)
 
     @commands.command(name="myinfo")
     @commands.guild_only()
@@ -77,8 +74,7 @@ class MemberCog(commands.Cog):
         embed.add_field(name="📅 Account Created", value=discord.utils.format_dt(member.created_at), inline=False)
         embed.add_field(name="📅 Joined Server", value=discord.utils.format_dt(member.joined_at) if member.joined_at else "Unknown", inline=False)
         embed.add_field(name="📌 Roles", value=", ".join(roles) if roles else "None", inline=False)
-        await safe_dm(member, embed=embed)
-        await ctx.reply("Sent you a DM.", delete_after=5)
+        await ctx.send(embed=embed)
 
     @commands.command(name="translate")
     @commands.guild_only()

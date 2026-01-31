@@ -38,6 +38,7 @@ class GuildSettings:
     flag_duration: int
     admin_role_ids: list[int]
     lock_categories: list[int]
+    promotion_channel_id: int | None
 
 
 @dataclass(slots=True)
@@ -142,7 +143,8 @@ class Database:
                 moderator_role_ids      TEXT DEFAULT '',
                 flag_duration           INTEGER DEFAULT 30,
                 admin_role_ids          TEXT DEFAULT '',
-                lock_categories         TEXT DEFAULT ''
+                lock_categories         TEXT DEFAULT '',
+                promotion_channel_id    INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS warnings (
@@ -270,6 +272,11 @@ class Database:
                 timeout_duration INTEGER DEFAULT 86400,
                 enabled BOOLEAN DEFAULT FALSE
             );
+
+            CREATE TABLE IF NOT EXISTS staff_hierarchy (
+                guild_id        INTEGER PRIMARY KEY,
+                role_ids        TEXT NOT NULL DEFAULT ''
+            );
             """
         )
         await self.conn.commit()
@@ -302,6 +309,7 @@ class Database:
             flag_duration=int(row["flag_duration"] or 30),
             admin_role_ids=_csv_to_int_list(row["admin_role_ids"]),
             lock_categories=_csv_to_int_list(row["lock_categories"]),
+            promotion_channel_id=row["promotion_channel_id"],
         )
 
     async def update_guild_settings(self, guild_id: int, **kwargs: Any) -> None:
@@ -882,4 +890,24 @@ class Database:
         fields = ", ".join(f"{k} = ?" for k in normalized)
         params = list(normalized.values()) + [guild_id]
         await self.conn.execute(f"UPDATE timeout_settings SET {fields} WHERE guild_id = ?", params)
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # Staff Hierarchy
+    # ---------------------------------------------------------------------
+
+    async def get_staff_hierarchy(self, guild_id: int) -> list[int]:
+        """Get staff hierarchy role IDs for a guild (highest to lowest)."""
+        async with self.conn.execute("SELECT role_ids FROM staff_hierarchy WHERE guild_id = ?", (guild_id,)) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return []
+        return _csv_to_int_list(row["role_ids"])
+
+    async def set_staff_hierarchy(self, guild_id: int, role_ids: list[int]) -> None:
+        """Set staff hierarchy role IDs for a guild."""
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO staff_hierarchy (guild_id, role_ids) VALUES (?, ?)",
+            (guild_id, _int_list_to_csv(role_ids)),
+        )
         await self.conn.commit()

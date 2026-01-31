@@ -138,6 +138,7 @@ COGS: Sequence[str] = (
     "vertigo.cogs.channels",
     "vertigo.cogs.cleaning",
     "vertigo.cogs.admin",
+    "vertigo.cogs.hierarchy",
     "vertigo.cogs.member",
     "vertigo.cogs.misc",
     "vertigo.cogs.owner",
@@ -232,8 +233,8 @@ async def main() -> None:
             usage = f"{prefix}{ctx.command.qualified_name} {ctx.command.signature}"
             embed = make_embed(
                 action="error",
-                title="❌ Missing Arguments",
-                description=f"{str(error)}\n\n**Usage:**\n```{usage}```",
+                title="**Usage**",
+                description=f"```{usage}```",
             )
             await ctx.send(embed=embed)
             return
@@ -244,8 +245,8 @@ async def main() -> None:
             usage = f"{prefix}{ctx.command.qualified_name} {ctx.command.signature}"
             embed = make_embed(
                 action="error",
-                title="❌ Invalid Arguments",
-                description=f"{str(error)}\n\n**Usage:**\n```{usage}```",
+                title="**Usage**",
+                description=f"```{usage}```",
             )
             await ctx.send(embed=embed)
             return

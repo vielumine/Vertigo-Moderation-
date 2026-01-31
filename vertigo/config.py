@@ -133,6 +133,11 @@ EMBED_COLORS: dict[str, int] = {
     "ai_settings": EMBED_COLOR_GRAY,
     "toggle_ai": EMBED_COLOR_GRAY,
 
+    # Hierarchy Commands (Gray)
+    "hierarchy": EMBED_COLOR_GRAY,
+    "promote": EMBED_COLOR_GRAY,
+    "demote": EMBED_COLOR_GRAY,
+
     # Error messages
     "error": EMBED_COLOR_ERROR,
     "success": EMBED_COLOR_SUCCESS,
