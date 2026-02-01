@@ -7,7 +7,7 @@ import logging
 import discord
 from discord.ext import commands
 
-from ..helpers import commands_channel_check, make_embed, require_level, safe_delete
+from helpers import commands_channel_check, make_embed, require_level, safe_delete
 
 logger = logging.getLogger(__name__)
 

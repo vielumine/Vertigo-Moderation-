@@ -8,9 +8,9 @@ from datetime import timedelta
 import discord
 from discord.ext import commands
 
-from .. import config
-from ..database import Database, GuildSettings
-from ..helpers import (
+import config
+from database import Database, GuildSettings
+from helpers import (
     Page,
     PaginationView,
     add_loading_reaction,

@@ -9,9 +9,9 @@ from datetime import timedelta
 import discord
 from discord.ext import commands
 
-from .. import config
-from ..database import Database, GuildSettings
-from ..helpers import (
+import config
+from database import Database, GuildSettings
+from helpers import (
     Page,
     PaginationView,
     attach_gif,
@@ -710,7 +710,7 @@ class ModerationCog(commands.Cog):
             return
 
         # Add loading reaction for long-running operation
-        from ..helpers import add_loading_reaction
+        from helpers import add_loading_reaction
         await add_loading_reaction(ctx.message)
 
         ok = 0
@@ -746,7 +746,7 @@ class ModerationCog(commands.Cog):
             return
 
         # Add loading reaction for long-running operation
-        from ..helpers import add_loading_reaction
+        from helpers import add_loading_reaction
         await add_loading_reaction(ctx.message)
 
         ok = 0
@@ -781,7 +781,7 @@ class ModerationCog(commands.Cog):
         until = discord.utils.utcnow() + timedelta(seconds=seconds)
 
         # Add loading reaction for long-running operation
-        from ..helpers import add_loading_reaction
+        from helpers import add_loading_reaction
         await add_loading_reaction(ctx.message)
 
         ok = 0

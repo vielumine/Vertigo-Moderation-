@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 import discord
 from discord.ext import commands
 
-from .. import config
-from ..database import Database
-from ..helpers import (
+import config
+from database import Database
+from helpers import (
     add_loading_reaction,
     commands_channel_check,
     make_embed,
@@ -321,7 +321,7 @@ class MiscCog(commands.Cog):
             member = referenced_msg.author
             
             # Parse duration
-            from ..helpers import parse_duration
+            from helpers import parse_duration
             duration_seconds = parse_duration(duration)
             
             # Add warning
@@ -366,7 +366,7 @@ class MiscCog(commands.Cog):
             message = await ctx.send(embed=embed)
             
             # Add undo view for WMR
-            from ..moderation import ModerationUndoView
+            from cogs.moderation import ModerationUndoView
             undo_view = ModerationUndoView("wmr", member.id, ctx.guild.id, message.id, ctx.author.id)
             await message.edit(view=undo_view)
             
