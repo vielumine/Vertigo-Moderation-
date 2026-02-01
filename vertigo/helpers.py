@@ -407,17 +407,19 @@ async def call_huggingface_api(user_message: str, personality: str = "genz") -> 
     """Call HuggingFace API to get AI response."""
     if not config.HUGGINGFACE_TOKEN:
         raise ValueError("HUGGINGFACE_TOKEN not configured")
-
-    # Use full URL with model name in the model parameter (not base_url)
-    client = InferenceClient(
-        model=f"https://router.huggingface.co/hf-inference/{config.HUGGINGFACE_MODEL}",
-        token=config.HUGGINGFACE_TOKEN
-    )
-
-    system_prompt = get_personality_prompt(personality)
-    full_prompt = f"{system_prompt}\n\nUser: {user_message}\nAI:"
-
+    
     try:
+        client = InferenceClient(
+            model=config.HUGGINGFACE_MODEL,
+            token=config.HUGGINGFACE_TOKEN
+        )
+        
+        system_prompt = get_personality_prompt(personality)
+        full_prompt = f"{system_prompt}\n\nUser: {user_message}\nAI:"
+        
+        # Log the request
+        logger.info(f"Calling HuggingFace with model: {config.HUGGINGFACE_MODEL}")
+        
         response = client.text_generation(
             full_prompt,
             max_new_tokens=100,
@@ -425,12 +427,21 @@ async def call_huggingface_api(user_message: str, personality: str = "genz") -> 
             do_sample=True,
             top_p=0.9,
         )
-
-        response_text = response.replace(full_prompt, "").strip()
+        
+        logger.info(f"HuggingFace response type: {type(response)}, value: {response}")
+        
+        # Handle response properly
+        if isinstance(response, str):
+            response_text = response.replace(full_prompt, "").strip()
+        elif isinstance(response, dict):
+            response_text = response.get("generated_text", "").replace(full_prompt, "").strip()
+        else:
+            response_text = str(response).replace(full_prompt, "").strip()
+        
         return response_text if response_text else "nah fr fr the vibes are off rn, try again bestie 😅"
-
+        
     except Exception as e:
-        logger.error("HuggingFace API error: %s", e)
+        logger.error(f"HuggingFace API error: {type(e).__name__}: {str(e)}", exc_info=True)
         return "nah the AI service is down rn, try again later 💀"
 
 
