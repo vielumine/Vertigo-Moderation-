@@ -408,10 +408,10 @@ async def call_huggingface_api(user_message: str, personality: str = "genz") -> 
     if not config.HUGGINGFACE_TOKEN:
         raise ValueError("HUGGINGFACE_TOKEN not configured")
 
+    # Use full URL with model name in the model parameter (not base_url)
     client = InferenceClient(
-        model=config.HUGGINGFACE_MODEL,
-        token=config.HUGGINGFACE_TOKEN,
-        base_url="https://router.huggingface.co/hf-inference",
+        model=f"https://router.huggingface.co/hf-inference/{config.HUGGINGFACE_MODEL}",
+        token=config.HUGGINGFACE_TOKEN
     )
 
     system_prompt = get_personality_prompt(personality)
