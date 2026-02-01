@@ -16,6 +16,7 @@ from helpers import (
     add_loading_reaction,
     attach_gif,
     commands_channel_check,
+    log_to_modlog_channel,
     make_embed,
     notify_owner,
     require_admin,
@@ -76,6 +77,9 @@ class AdminCog(commands.Cog):
             message_id=message.id,
         )
 
+        # Log to modlog channel
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         if strike >= config.MAX_STAFF_FLAGS:
             await self._terminate(ctx, member, reason=f"Auto-terminate: {config.MAX_STAFF_FLAGS} flags - {reason}")
             await safe_dm(ctx.author, embed=make_embed(action="terminate", title="Auto Terminate", description=f"{member} reached {config.MAX_STAFF_FLAGS} strikes and was terminated."))
@@ -108,6 +112,10 @@ class AdminCog(commands.Cog):
             reason=f"Removed flag {strike_id}",
             message_id=message.id,
         )
+
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
 
         await safe_delete(ctx.message)
 
@@ -159,6 +167,11 @@ class AdminCog(commands.Cog):
         confirm = make_embed(action="terminate", title="⛔ Staff Member Terminated", description=f"✅ Terminated 👤 {member.mention}.")
         confirm, file = attach_gif(confirm, gif_key="STAFF_TERMINATE")
         await ctx.send(embed=confirm, file=file)
+
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=confirm, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="lockchannels")

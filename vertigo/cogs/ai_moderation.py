@@ -16,6 +16,7 @@ from database import AITarget, BotBlacklist, Database, TimeoutSettings
 from helpers import (
     add_loading_reaction,
     extract_id,
+    log_to_modlog_channel,
     make_embed,
     require_admin,
     require_owner,
@@ -76,6 +77,10 @@ class AIModerationCog(commands.Cog):
                 message_id=ctx.message.id
             )
             
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
             await ctx.send(embed=embed)
             
         except Exception as e:
@@ -123,6 +128,10 @@ class AIModerationCog(commands.Cog):
                 message_id=ctx.message.id
             )
             
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
             await ctx.send(embed=embed)
             
         except Exception as e:
@@ -159,6 +168,10 @@ class AIModerationCog(commands.Cog):
                 reason=reason,
                 message_id=ctx.message.id
             )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
             
             await ctx.send(embed=embed)
             
@@ -204,6 +217,10 @@ class AIModerationCog(commands.Cog):
                 reason=reason,
                 message_id=ctx.message.id
             )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
             
             await ctx.send(embed=embed)
             
@@ -252,6 +269,10 @@ class AIModerationCog(commands.Cog):
                 reason=reason,
                 message_id=ctx.message.id
             )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
             
             await ctx.send(embed=embed)
             
