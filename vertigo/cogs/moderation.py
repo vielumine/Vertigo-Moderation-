@@ -20,6 +20,7 @@ from helpers import (
     commands_channel_check,
     extract_id,
     humanize_seconds,
+    log_to_modlog_channel,
     make_embed,
     notify_owner,
     parse_duration,
@@ -127,6 +128,16 @@ class ModerationUndoView(discord.ui.View):
                     moderator_id=interaction.user.id,
                     reason=f"Undo warn (original message: {self.message_id})"
                 )
+
+                # Log to modlog channel
+                settings = await interaction.client.db.get_guild_settings(self.guild_id, default_prefix=config.DEFAULT_PREFIX)
+                log_embed = make_embed(
+                    action="unwarn",
+                    title="↩️ Moderation Action Undone: Warn",
+                    description=f"**Target:** <@{self.user_id}> ({self.user_id})\n**Moderator:** {interaction.user.mention}\n**Original Message ID:** `{self.message_id}`"
+                )
+                await log_to_modlog_channel(interaction.client, guild=interaction.guild, settings=settings, embed=log_embed, file=None)
+
                 if respond:
                     await interaction.response.send_message("✅ Warn undone successfully.", ephemeral=True)
                 return True
@@ -160,6 +171,16 @@ class ModerationUndoView(discord.ui.View):
                     moderator_id=interaction.user.id,
                     reason=f"Undo mute (original message: {self.message_id})"
                 )
+
+                # Log to modlog channel
+                settings = await interaction.client.db.get_guild_settings(self.guild_id, default_prefix=config.DEFAULT_PREFIX)
+                log_embed = make_embed(
+                    action="unmute",
+                    title="↩️ Moderation Action Undone: Mute",
+                    description=f"**Target:** {member.mention} ({member.id})\n**Moderator:** {interaction.user.mention}\n**Original Message ID:** `{self.message_id}`"
+                )
+                await log_to_modlog_channel(interaction.client, guild=interaction.guild, settings=settings, embed=log_embed, file=None)
+
                 if respond:
                     await interaction.response.send_message("✅ Mute undone successfully.", ephemeral=True)
                 return True
@@ -190,6 +211,16 @@ class ModerationUndoView(discord.ui.View):
                 moderator_id=interaction.user.id,
                 reason=f"Undo ban (original message: {self.message_id})"
             )
+
+            # Log to modlog channel
+            settings = await interaction.client.db.get_guild_settings(self.guild_id, default_prefix=config.DEFAULT_PREFIX)
+            log_embed = make_embed(
+                action="unban",
+                title="↩️ Moderation Action Undone: Ban",
+                description=f"**Target:** <@{self.user_id}> ({self.user_id})\n**Moderator:** {interaction.user.mention}\n**Original Message ID:** `{self.message_id}`"
+            )
+            await log_to_modlog_channel(interaction.client, guild=interaction.guild, settings=settings, embed=log_embed, file=None)
+
             await interaction.response.send_message("✅ Ban undone successfully.", ephemeral=True)
         except Exception as e:
             logger.error(f"Undo ban error: {e}")
@@ -277,6 +308,9 @@ class ModerationCog(commands.Cog):
             message_id=message_id,
         )
 
+        # Log to modlog channel
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         owner_embed = make_embed(
             action="warn",
             title="Staff Action: warn",
@@ -325,6 +359,10 @@ class ModerationCog(commands.Cog):
             reason=f"Removed warning #{warn_id} (DB ID: {actual_id})",
             message_id=message.id,
         )
+
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
 
         await safe_delete(ctx.message)
 
@@ -446,6 +484,10 @@ class ModerationCog(commands.Cog):
             message_id=message.id,
         )
 
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         owner_embed = make_embed(
             action="mute",
             title="Staff Action: mute",
@@ -491,6 +533,10 @@ class ModerationCog(commands.Cog):
             message_id=message.id,
         )
 
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="kick")
@@ -529,6 +575,10 @@ class ModerationCog(commands.Cog):
             reason=reason,
             message_id=message.id,
         )
+
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
 
         await safe_delete(ctx.message)
 
@@ -575,6 +625,10 @@ class ModerationCog(commands.Cog):
             message_id=message.id,
         )
 
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="unban")
@@ -606,6 +660,10 @@ class ModerationCog(commands.Cog):
             reason=reason,
             message_id=message.id,
         )
+
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
 
         await safe_delete(ctx.message)
 
@@ -680,6 +738,10 @@ class ModerationCog(commands.Cog):
             message_id=message.id,
         )
 
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     async def _parse_members_csv(self, ctx: commands.Context, raw: str) -> list[discord.Member]:
@@ -730,6 +792,11 @@ class ModerationCog(commands.Cog):
         embed = make_embed(action="masskick", title="👢 Mass Kick Results", description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         embed, file = attach_gif(embed, gif_key="KICK")
         await ctx.send(embed=embed, file=file)
+
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="massban")
@@ -767,6 +834,11 @@ class ModerationCog(commands.Cog):
         embed = make_embed(action="massban", title="🚫 Mass Ban Results", description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         embed, file = attach_gif(embed, gif_key="BAN")
         await ctx.send(embed=embed, file=file)
+
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="massmute")
@@ -802,6 +874,11 @@ class ModerationCog(commands.Cog):
         embed = make_embed(action="massmute", title="🔇 Mass Mute Results", description=f"⏱️ Duration: {humanize_seconds(seconds)}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         embed, file = attach_gif(embed, gif_key="MUTE")
         await ctx.send(embed=embed, file=file)
+
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     # ----------------------------- Head moderator -----------------------------
@@ -830,6 +907,11 @@ class ModerationCog(commands.Cog):
         message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(guild_id=ctx.guild.id, action_type="imprison", user_id=member.id, moderator_id=ctx.author.id, reason=reason, message_id=message.id)  # type: ignore[union-attr]
+        
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+        
         await safe_delete(ctx.message)
 
     @commands.command(name="release")
@@ -875,6 +957,11 @@ class ModerationCog(commands.Cog):
         message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(guild_id=ctx.guild.id, action_type="release", user_id=member.id, moderator_id=ctx.author.id, reason=reason, message_id=message.id)  # type: ignore[union-attr]
+        
+        # Log to modlog channel
+        settings = await self._settings(ctx.guild)
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+        
         await safe_delete(ctx.message)
 
 

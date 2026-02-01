@@ -16,6 +16,7 @@ from database import AITarget, BotBlacklist, Database, TimeoutSettings
 from helpers import (
     add_loading_reaction,
     extract_id,
+    log_to_modlog_channel,
     make_embed,
     require_admin,
     require_owner,
@@ -76,6 +77,10 @@ class AIModerationCog(commands.Cog):
                 message_id=ctx.message.id
             )
             
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
             await ctx.send(embed=embed)
             
         except Exception as e:
@@ -123,6 +128,10 @@ class AIModerationCog(commands.Cog):
                 message_id=ctx.message.id
             )
             
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
             await ctx.send(embed=embed)
             
         except Exception as e:
@@ -159,6 +168,10 @@ class AIModerationCog(commands.Cog):
                 reason=reason,
                 message_id=ctx.message.id
             )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
             
             await ctx.send(embed=embed)
             
@@ -204,6 +217,10 @@ class AIModerationCog(commands.Cog):
                 reason=reason,
                 message_id=ctx.message.id
             )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
             
             await ctx.send(embed=embed)
             
@@ -252,6 +269,10 @@ class AIModerationCog(commands.Cog):
                 reason=reason,
                 message_id=ctx.message.id
             )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
             
             await ctx.send(embed=embed)
             
@@ -459,6 +480,8 @@ class AIModerationCog(commands.Cog):
         """Open the timeout panel for managing prohibited terms."""
         try:
             settings = await self.db.get_timeout_settings(ctx.guild.id)
+            alert_channel = ctx.guild.get_channel(settings.alert_channel_id) if settings.alert_channel_id else None
+            alert_role = ctx.guild.get_role(settings.alert_role_id) if settings.alert_role_id else None
             
             embed = make_embed(
                 action="ai",
@@ -468,7 +491,13 @@ class AIModerationCog(commands.Cog):
             
             embed.add_field(
                 name="Current Settings",
-                value=f"**Enabled:** {settings.enabled}\n**Phrases:** {len(settings.phrases.split(',')) if settings.phrases else 0}\n**Timeout Duration:** {settings.timeout_duration // 3600}h\n**Alert Channel:** {ctx.guild.get_channel(settings.alert_channel_id).mention if settings.alert_channel_id else 'Not set'}",
+                value=(
+                    f"**Enabled:** {settings.enabled}\n"
+                    f"**Phrases:** {len(settings.phrases.split(',')) if settings.phrases else 0}\n"
+                    f"**Timeout Duration:** {settings.timeout_duration // 3600}h\n"
+                    f"**Alert Channel:** {alert_channel.mention if alert_channel else 'Not set'}\n"
+                    f"**Alert Role:** {alert_role.mention if alert_role else 'Not set'}"
+                ),
                 inline=False
             )
             
@@ -566,6 +595,10 @@ class TimeoutPanelView(discord.ui.View):
     
     async def create_embed(self) -> discord.Embed:
         """Create the main panel embed."""
+        guild = self.bot.get_guild(self.guild_id)
+        alert_channel = guild.get_channel(self.settings.alert_channel_id) if guild and self.settings.alert_channel_id else None
+        alert_role = guild.get_role(self.settings.alert_role_id) if guild and self.settings.alert_role_id else None
+
         embed = make_embed(
             action="ai",
             title="⏰ Timeout Panel",
@@ -574,7 +607,13 @@ class TimeoutPanelView(discord.ui.View):
         
         embed.add_field(
             name="Current Settings",
-            value=f"**Enabled:** {self.settings.enabled}\n**Phrases:** {len(self.settings.phrases.split(',')) if self.settings.phrases else 0}\n**Timeout Duration:** {self.settings.timeout_duration // 3600}h\n**Alert Channel:** {self.bot.get_guild(self.guild_id).get_channel(self.settings.alert_channel_id).mention if self.settings.alert_channel_id else 'Not set'}",
+            value=(
+                f"**Enabled:** {self.settings.enabled}\n"
+                f"**Phrases:** {len(self.settings.phrases.split(',')) if self.settings.phrases else 0}\n"
+                f"**Timeout Duration:** {self.settings.timeout_duration // 3600}h\n"
+                f"**Alert Channel:** {alert_channel.mention if alert_channel else 'Not set'}\n"
+                f"**Alert Role:** {alert_role.mention if alert_role else 'Not set'}"
+            ),
             inline=False
         )
         
@@ -596,25 +635,38 @@ class PhraseModal(discord.ui.Modal):
         ))
     
     async def callback(self, interaction: discord.Interaction) -> None:
-        phrase_input = self.children[0].value
-        phrases = [p.strip() for p in phrase_input.split(',') if p.strip()]
-        
-        # Add new phrases to existing ones
-        existing_phrases = self.settings.phrases.split(',') if self.settings.phrases else []
-        all_phrases = list(set(existing_phrases + phrases))
-        
-        await interaction.client.db.update_timeout_settings(
-            self.settings.guild_id,
-            phrases=','.join(all_phrases)
-        )
-        
-        embed = make_embed(
-            action="ai",
-            title="✅ Phrases Updated",
-            description=f"Added {len(phrases)} new phrases. Total: {len(all_phrases)}"
-        )
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        try:
+            phrase_input = self.children[0].value
+            phrases = [p.strip() for p in phrase_input.split(',') if p.strip()]
+            
+            # Add new phrases to existing ones
+            existing_phrases = self.settings.phrases.split(',') if self.settings.phrases else []
+            all_phrases = list(set(existing_phrases + phrases))
+            
+            new_phrases_str = ','.join(all_phrases)
+            await interaction.client.db.update_timeout_settings(
+                self.settings.guild_id,
+                phrases=new_phrases_str
+            )
+            
+            # Update local settings object
+            self.settings.phrases = new_phrases_str
+            
+            embed = make_embed(
+                action="ai",
+                title="✅ Phrases Updated",
+                description=f"Added {len(phrases)} new phrases. Total: {len(all_phrases)}"
+            )
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error updating phrases: {e}")
+            embed = make_embed(
+                action="error",
+                title="Update Failed",
+                description=f"Failed to update phrases: {str(e)}"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class AlertRoleModal(discord.ui.Modal):
@@ -632,31 +684,54 @@ class AlertRoleModal(discord.ui.Modal):
         ))
     
     async def callback(self, interaction: discord.Interaction) -> None:
-        role_input = self.children[0].value
-        
-        # Extract role ID
-        role_id = extract_id(role_input)
-        if not role_id:
+        try:
+            role_input = self.children[0].value
+            
+            # Extract role ID
+            role_id = extract_id(role_input)
+            if not role_id:
+                embed = make_embed(
+                    action="error",
+                    title="Invalid Role",
+                    description="Please provide a valid role mention or ID."
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            # Verify role exists
+            role = interaction.guild.get_role(role_id)
+            if not role:
+                embed = make_embed(
+                    action="error",
+                    title="Role Not Found",
+                    description=f"Could not find role with ID `{role_id}` in this server."
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            await interaction.client.db.update_timeout_settings(
+                self.settings.guild_id,
+                alert_role_id=role_id
+            )
+            
+            # Update local settings object
+            self.settings.alert_role_id = role_id
+            
+            embed = make_embed(
+                action="ai",
+                title="✅ Alert Role Set",
+                description=f"Alert role set to {role.mention}"
+            )
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error updating alert role: {e}")
             embed = make_embed(
                 action="error",
-                title="Invalid Role",
-                description="Please provide a valid role mention or ID."
+                title="Update Failed",
+                description=f"An unexpected error occurred: {str(e)}"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        await interaction.client.db.update_timeout_settings(
-            self.settings.guild_id,
-            alert_role_id=role_id
-        )
-        
-        embed = make_embed(
-            action="ai",
-            title="✅ Alert Role Set",
-            description=f"Alert role set to <@&{role_id}>"
-        )
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class AlertChannelModal(discord.ui.Modal):
@@ -674,31 +749,63 @@ class AlertChannelModal(discord.ui.Modal):
         ))
     
     async def callback(self, interaction: discord.Interaction) -> None:
-        channel_input = self.children[0].value
-        
-        # Extract channel ID
-        channel_id = extract_id(channel_input)
-        if not channel_id:
+        try:
+            channel_input = self.children[0].value
+            
+            # Extract channel ID
+            channel_id = extract_id(channel_input)
+            if not channel_id:
+                embed = make_embed(
+                    action="error",
+                    title="Invalid Channel",
+                    description="Please provide a valid channel mention or ID."
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            # Verify channel exists
+            channel = interaction.guild.get_channel(channel_id)
+            if not channel:
+                embed = make_embed(
+                    action="error",
+                    title="Channel Not Found",
+                    description=f"Could not find channel with ID `{channel_id}` in this server."
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+                embed = make_embed(
+                    action="error",
+                    title="Invalid Channel Type",
+                    description="Alert channel must be a text channel or a thread."
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+
+            await interaction.client.db.update_timeout_settings(
+                self.settings.guild_id,
+                alert_channel_id=channel_id
+            )
+            
+            # Update local settings object
+            self.settings.alert_channel_id = channel_id
+            
+            embed = make_embed(
+                action="ai",
+                title="✅ Alert Channel Set",
+                description=f"Alert channel set to {channel.mention}"
+            )
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error updating alert channel: {e}")
             embed = make_embed(
                 action="error",
-                title="Invalid Channel",
-                description="Please provide a valid channel mention or ID."
+                title="Update Failed",
+                description=f"An unexpected error occurred: {str(e)}"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        await interaction.client.db.update_timeout_settings(
-            self.settings.guild_id,
-            alert_channel_id=channel_id
-        )
-        
-        embed = make_embed(
-            action="ai",
-            title="✅ Alert Channel Set",
-            description=f"Alert channel set to <#{channel_id}>"
-        )
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class TimeoutDurationModal(discord.ui.Modal):
@@ -716,33 +823,45 @@ class TimeoutDurationModal(discord.ui.Modal):
         ))
     
     async def callback(self, interaction: discord.Interaction) -> None:
-        duration_input = self.children[0].value
-        
         try:
-            hours = int(duration_input)
-            if hours < 15 or hours > 720:
-                raise ValueError("Duration out of range")
+            duration_input = self.children[0].value
             
-            duration_seconds = hours * 3600
-            
-            await interaction.client.db.update_timeout_settings(
-                self.settings.guild_id,
-                timeout_duration=duration_seconds
-            )
-            
-            embed = make_embed(
-                action="ai",
-                title="✅ Duration Updated",
-                description=f"Timeout duration set to {hours} hours"
-            )
-            
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            
-        except ValueError:
+            try:
+                hours = int(duration_input)
+                if hours < 15 or hours > 720:
+                    raise ValueError("Duration out of range")
+                
+                duration_seconds = hours * 3600
+                
+                await interaction.client.db.update_timeout_settings(
+                    self.settings.guild_id,
+                    timeout_duration=duration_seconds
+                )
+                
+                # Update local settings object
+                self.settings.timeout_duration = duration_seconds
+                
+                embed = make_embed(
+                    action="ai",
+                    title="✅ Duration Updated",
+                    description=f"Timeout duration set to {hours} hours"
+                )
+                
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                
+            except ValueError:
+                embed = make_embed(
+                    action="error",
+                    title="Invalid Duration",
+                    description="Please provide a valid duration between 15 and 720 hours."
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error updating timeout duration: {e}")
             embed = make_embed(
                 action="error",
-                title="Invalid Duration",
-                description="Please provide a valid duration between 15 and 720 hours."
+                title="Update Failed",
+                description=f"An unexpected error occurred: {str(e)}"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 

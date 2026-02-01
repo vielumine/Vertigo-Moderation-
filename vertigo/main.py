@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 import config
 from database import Database
-from helpers import make_embed
+from helpers import log_to_modlog_channel, make_embed
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,15 @@ class ActionReasonModal(discord.ui.Modal):
                 moderator_id=interaction.user.id,
                 reason=reason
             )
+
+            # Log to modlog channel
+            settings = await interaction.client.db.get_guild_settings(self.guild_id, default_prefix=config.DEFAULT_PREFIX)
+            log_embed = make_embed(
+                action=self.action_type,
+                title=f"🚨 Timeout Alert Action: {self.action_type.title()}",
+                description=f"**Target:** {member.mention} ({member.id})\n**Moderator:** {interaction.user.mention}\n**Reason:** {reason}"
+            )
+            await log_to_modlog_channel(interaction.client, guild=guild, settings=settings, embed=log_embed, file=None)
             
         except Exception as e:
             logger.error(f"Timeout action failed: {e}")
@@ -410,6 +419,9 @@ async def main() -> None:
                                         reason=f"Used prohibited term: {matched_phrase}",
                                         message_id=message.id
                                     )
+                                    
+                                    # Log to modlog channel
+                                    await log_to_modlog_channel(bot, guild=bot.get_guild(guild_id), settings=guild_settings, embed=alert_embed, file=None)
                                     
                         except Exception as e:
                             logger.error(f"Timeout action failed: {e}")

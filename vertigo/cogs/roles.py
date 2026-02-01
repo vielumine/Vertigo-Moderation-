@@ -13,6 +13,7 @@ from helpers import (
     attach_gif,
     commands_channel_check,
     extract_id,
+    log_to_modlog_channel,
     make_embed,
     parse_duration,
     require_level,
@@ -67,6 +68,11 @@ class RolesCog(commands.Cog):
             reason="Role assigned",
             message_id=message.id,
         )
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="removerole")
@@ -101,6 +107,11 @@ class RolesCog(commands.Cog):
             reason="Role removed",
             message_id=message.id,
         )
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="temprole")
@@ -150,6 +161,10 @@ class RolesCog(commands.Cog):
             message_id=message.id,
         )
 
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="removetemp")
@@ -178,6 +193,10 @@ class RolesCog(commands.Cog):
             reason="Temp role removed",
             message_id=message.id,
         )
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
 
         await safe_delete(ctx.message)
 
@@ -221,6 +240,10 @@ class RolesCog(commands.Cog):
             message_id=message.id,
         )
 
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="removepersist")
@@ -249,6 +272,10 @@ class RolesCog(commands.Cog):
             reason="Persistent role removed",
             message_id=message.id,
         )
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
 
         await safe_delete(ctx.message)
 
@@ -295,6 +322,11 @@ class RolesCog(commands.Cog):
         ok, failed = await self._mass_role_op(ctx, members=members, role=role, add=True)
         embed = make_embed(action="massrole", title="📌 Mass Role Assignment Results", description=f"Assigned {role.mention}.\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="massremoverole")
@@ -310,6 +342,11 @@ class RolesCog(commands.Cog):
         ok, failed = await self._mass_role_op(ctx, members=members, role=role, add=False)
         embed = make_embed(action="massremoverole", title="📌 Mass Role Removal Results", description=f"Removed {role.mention}.\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="masstemprole")
@@ -334,6 +371,11 @@ class RolesCog(commands.Cog):
                 failed += 1
         embed = make_embed(action="masstemprole", title="⏱️ Mass Temp Role Results", description=f"Assigned {role.mention} for {duration}.\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="massremovetemp")
@@ -358,6 +400,11 @@ class RolesCog(commands.Cog):
                 failed += 1
         embed = make_embed(action="massremovetemp", title="⏱️ Mass Temp Role Removal Results", description=f"Role: {role.mention}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="masspersistrole")
@@ -381,6 +428,11 @@ class RolesCog(commands.Cog):
                 failed += 1
         embed = make_embed(action="masspersistrole", title="📍 Mass Persist Role Results", description=f"Assigned {role.mention}.\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
     @commands.command(name="massremovepersist")
@@ -405,6 +457,11 @@ class RolesCog(commands.Cog):
                 failed += 1
         embed = make_embed(action="massremovepersist", title="📍 Mass Persist Role Removal Results", description=f"Role: {role.mention}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         await ctx.send(embed=embed)
+
+        # Log to modlog channel
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix="!")
+        await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
         await safe_delete(ctx.message)
 
 

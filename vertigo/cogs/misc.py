@@ -14,6 +14,7 @@ from database import Database
 from helpers import (
     add_loading_reaction,
     commands_channel_check,
+    log_to_modlog_channel,
     make_embed,
     require_level,
     safe_delete,
@@ -380,7 +381,9 @@ class MiscCog(commands.Cog):
                 message_id=referenced_msg.id
             )
             
-            await ctx.send(embed=embed)
+            # Log to modlog channel
+            settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
             
             # Also log to the original message channel if different
             if ctx.channel.id != referenced_msg.channel.id:
