@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 
 import discord
-import requests
+from huggingface_hub import InferenceClient
 from discord.ext import commands
 
 import config
@@ -407,62 +407,31 @@ async def call_huggingface_api(user_message: str, personality: str = "genz") -> 
     """Call HuggingFace API to get AI response."""
     if not config.HUGGINGFACE_TOKEN:
         raise ValueError("HUGGINGFACE_TOKEN not configured")
-    
-    headers = {
-        "Authorization": f"Bearer {config.HUGGINGFACE_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    
+
+    client = InferenceClient(
+        model=config.HUGGINGFACE_MODEL,
+        token=config.HUGGINGFACE_TOKEN,
+        base_url="https://router.huggingface.co/hf-inference",
+    )
+
     system_prompt = get_personality_prompt(personality)
-    
-    # Build the input for the model
     full_prompt = f"{system_prompt}\n\nUser: {user_message}\nAI:"
-    
-    payload = {
-        "inputs": full_prompt,
-        "parameters": {
-            "max_new_tokens": 100,
-            "temperature": 0.8,
-            "do_sample": True,
-            "top_p": 0.9,
-        }
-    }
-    
+
     try:
-        response = requests.post(
-            f"https://api-inference.huggingface.co/models/{config.HUGGINGFACE_MODEL}",
-            headers=headers,
-            json=payload,
-            timeout=config.AI_RESPONSE_TIMEOUT
+        response = client.text_generation(
+            full_prompt,
+            max_new_tokens=100,
+            temperature=0.8,
+            do_sample=True,
+            top_p=0.9,
         )
-        response.raise_for_status()
-        
-        result = response.json()
-        
-        # Extract the generated text
-        if isinstance(result, list) and len(result) > 0:
-            generated_text = result[0].get("generated_text", "")
-            if generated_text:
-                # Remove the input prompt to get just the response
-                response_text = generated_text.replace(full_prompt, "").strip()
-                return response_text
-        elif isinstance(result, dict):
-            generated_text = result.get("generated_text", "")
-            if generated_text:
-                response_text = generated_text.replace(full_prompt, "").strip()
-                return response_text
-        
-        # Fallback response
-        return "nah fr fr the vibes are off rn, try again bestie 😅"
-        
-    except requests.exceptions.Timeout:
-        return "yo the AI is taking too long to respond, try again in a bit ⏰"
-    except requests.exceptions.RequestException as e:
+
+        response_text = response.replace(full_prompt, "").strip()
+        return response_text if response_text else "nah fr fr the vibes are off rn, try again bestie 😅"
+
+    except Exception as e:
         logger.error("HuggingFace API error: %s", e)
         return "nah the AI service is down rn, try again later 💀"
-    except Exception as e:
-        logger.error("Unexpected AI error: %s", e)
-        return "something went wrong with the AI, try again bestie 😅"
 
 
 async def get_ai_response(user_message: str, personality: str = "genz") -> str:
