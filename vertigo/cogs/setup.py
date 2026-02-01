@@ -7,9 +7,9 @@ import logging
 import discord
 from discord.ext import commands
 
-from .. import config
-from ..database import Database
-from ..helpers import make_embed, parse_id_list
+import config
+from database import Database
+from helpers import make_embed, parse_id_list
 
 logger = logging.getLogger(__name__)
 

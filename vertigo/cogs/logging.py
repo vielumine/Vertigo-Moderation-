@@ -9,8 +9,8 @@ import aiohttp
 import discord
 from discord.ext import commands
 
-from .. import config
-from ..helpers import make_embed, notify_owner
+import config
+from helpers import make_embed, notify_owner
 
 logger = logging.getLogger(__name__)
 

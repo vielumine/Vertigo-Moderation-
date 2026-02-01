@@ -7,9 +7,9 @@ import logging
 import discord
 from discord.ext import commands
 
-from .. import config
-from ..database import Database, GuildSettings
-from ..helpers import (
+import config
+from database import Database, GuildSettings
+from helpers import (
     commands_channel_check,
     make_embed,
     require_admin,

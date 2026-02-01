@@ -7,8 +7,8 @@ import logging
 import discord
 from discord.ext import commands
 
-from .. import config
-from ..helpers import make_embed, require_owner
+import config
+from helpers import make_embed, require_owner
 
 logger = logging.getLogger(__name__)
 

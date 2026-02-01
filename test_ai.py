@@ -3,7 +3,7 @@
 
 import sys
 import os
-sys.path.insert(0, '/home/engine/project')
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'vertigo'))
 
 from helpers import get_ai_response, get_personality_prompt, truncate_response
 

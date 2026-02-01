@@ -130,21 +130,21 @@ class ActionReasonModal(discord.ui.Modal):
 
 
 COGS: Sequence[str] = (
-    "vertigo.cogs.logging",
-    "vertigo.cogs.background",
-    "vertigo.cogs.setup",
-    "vertigo.cogs.moderation",
-    "vertigo.cogs.roles",
-    "vertigo.cogs.channels",
-    "vertigo.cogs.cleaning",
-    "vertigo.cogs.admin",
-    "vertigo.cogs.hierarchy",
-    "vertigo.cogs.member",
-    "vertigo.cogs.misc",
-    "vertigo.cogs.owner",
-    "vertigo.cogs.owner_commands",
-    "vertigo.cogs.ai",
-    "vertigo.cogs.ai_moderation",
+    "cogs.logging",
+    "cogs.background",
+    "cogs.setup",
+    "cogs.moderation",
+    "cogs.roles",
+    "cogs.channels",
+    "cogs.cleaning",
+    "cogs.admin",
+    "cogs.hierarchy",
+    "cogs.member",
+    "cogs.misc",
+    "cogs.owner",
+    "cogs.owner_commands",
+    "cogs.ai",
+    "cogs.ai_moderation",
 )
 
 

@@ -7,7 +7,8 @@ import logging
 import discord
 from discord.ext import commands
 
-from ..helpers import (
+from helpers import (
+    add_loading_reaction,
     commands_channel_check,
     extract_id,
     make_embed,

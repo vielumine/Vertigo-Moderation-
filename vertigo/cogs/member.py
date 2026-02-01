@@ -7,8 +7,8 @@ import logging
 import discord
 from discord.ext import commands
 
-from ..database import Database
-from ..helpers import commands_channel_check, make_embed
+from database import Database
+from helpers import commands_channel_check, make_embed
 
 logger = logging.getLogger(__name__)
 
