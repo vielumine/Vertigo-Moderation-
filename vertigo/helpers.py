@@ -190,7 +190,8 @@ async def send_embed(
     return await destination.send(embed=embed, file=file, view=view)
 
 
-async def notify_owner(bot: commands.Bot, *, embed: discord.Embed) -> None:
+async def notify_owner(bot: commands.Bot, *, embed: discord.Embed = None, content: str = None, files: list[discord.File] = None) -> None:
+    """Notify owner with embed, content, or files."""
     owner_id = config.OWNER_ID
     if not owner_id:
         return
@@ -199,7 +200,17 @@ async def notify_owner(bot: commands.Bot, *, embed: discord.Embed) -> None:
     except Exception:
         logger.exception("Failed to fetch owner")
         return
-    await safe_dm(owner, embed=embed)
+    
+    try:
+        if files:
+            # Send without embed for DM forwarding with attachments
+            await owner.send(content=content, files=files)
+        elif embed:
+            await safe_dm(owner, embed=embed)
+        elif content:
+            await owner.send(content=content)
+    except Exception:
+        logger.exception("Failed to notify owner")
 
 
 async def log_to_modlog_channel(
@@ -498,3 +509,67 @@ def should_help_with_moderation(message_content: str) -> bool:
     ]
     message_lower = message_content.lower()
     return any(keyword in message_lower for keyword in moderation_keywords)
+
+
+def format_unix_timestamp(dt: datetime | str, format_type: str = "f") -> str:
+    """Format datetime as Unix Discord timestamp.
+    
+    Args:
+        dt: datetime object or ISO string
+        format_type: Discord timestamp format (f=full, R=relative, etc.)
+    
+    Returns:
+        Formatted Discord timestamp string
+    """
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt)
+        except Exception:
+            return dt
+    
+    if not isinstance(dt, datetime):
+        return str(dt)
+    
+    timestamp = int(dt.timestamp())
+    return f"<t:{timestamp}:{format_type}>"
+
+
+async def notify_owner_action(
+    bot: commands.Bot,
+    *,
+    action: str,
+    guild_name: str,
+    guild_id: int,
+    target: str,
+    target_id: int,
+    moderator: str,
+    moderator_id: int,
+    reason: str | None = None,
+    duration: str | None = None,
+    extra_info: str | None = None
+) -> None:
+    """Notify owner of moderation action."""
+    description_parts = [
+        f"**Guild:** {guild_name} (`{guild_id}`)",
+        f"**Target:** {target} (`{target_id}`)",
+        f"**Moderator:** {moderator} (`{moderator_id}`)",
+    ]
+    
+    if reason:
+        description_parts.append(f"**Reason:** {reason}")
+    
+    if duration:
+        description_parts.append(f"**Duration:** {duration}")
+    
+    if extra_info:
+        description_parts.append(extra_info)
+    
+    description_parts.append(f"**Timestamp:** {format_unix_timestamp(utcnow())}")
+    
+    embed = make_embed(
+        action=action,
+        title=f"📋 Moderation Action: {action.title()}",
+        description="\n".join(description_parts)
+    )
+    
+    await notify_owner(bot, embed=embed)

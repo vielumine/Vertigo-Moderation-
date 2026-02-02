@@ -311,6 +311,9 @@ class ModerationCog(commands.Cog):
         # Log to modlog channel
         await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
 
+        # Track mod stat
+        await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="warns")
+
         owner_embed = make_embed(
             action="warn",
             title="Staff Action: warn",
@@ -488,6 +491,9 @@ class ModerationCog(commands.Cog):
         settings = await self._settings(ctx.guild)
         await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
 
+        # Track mod stat
+        await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="mutes")
+
         owner_embed = make_embed(
             action="mute",
             title="Staff Action: mute",
@@ -580,6 +586,9 @@ class ModerationCog(commands.Cog):
         settings = await self._settings(ctx.guild)
         await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
 
+        # Track mod stat
+        await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="kicks")
+
         await safe_delete(ctx.message)
 
     @commands.command(name="ban")
@@ -628,6 +637,9 @@ class ModerationCog(commands.Cog):
         # Log to modlog channel
         settings = await self._settings(ctx.guild)
         await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
+        # Track mod stat
+        await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="bans")
 
         await safe_delete(ctx.message)
 

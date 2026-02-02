@@ -205,8 +205,10 @@ class ChannelsCog(commands.Cog):
     @commands.guild_only()
     @require_level("head_mod")
     async def message(self, ctx: commands.Context, channel: discord.TextChannel, *, message: str) -> None:
-        """Send a plain text message to a channel."""
-
+        """Send a plain text message to a channel.
+        
+        Works anywhere in the server.
+        """
         try:
             await channel.send(content=message)
         except discord.Forbidden:
@@ -228,6 +230,10 @@ class ChannelsCog(commands.Cog):
     @commands.guild_only()
     @require_level("head_mod")
     async def editmess(self, ctx: commands.Context, message_id: int, *, new_message: str) -> None:
+        """Edit a bot message in the current channel.
+        
+        Works anywhere in the server.
+        """
         msg = await self._fetch_message(ctx, message_id)
         if msg is None or msg.author.id != self.bot.user.id:  # type: ignore[union-attr]
             embed = make_embed(action="error", title="Not Found", description="I can only edit my own messages in this channel.")
@@ -243,6 +249,10 @@ class ChannelsCog(commands.Cog):
     @commands.guild_only()
     @require_level("head_mod")
     async def replymess(self, ctx: commands.Context, message_id: int, *, reply: str) -> None:
+        """Reply to a message in the current channel.
+        
+        Works anywhere in the server.
+        """
         msg = await self._fetch_message(ctx, message_id)
         if msg is None:
             embed = make_embed(action="error", title="Not Found", description="Message not found in this channel.")
@@ -258,6 +268,10 @@ class ChannelsCog(commands.Cog):
     @commands.guild_only()
     @require_level("head_mod")
     async def deletemess(self, ctx: commands.Context, message_id: int) -> None:
+        """Delete a bot message in the current channel.
+        
+        Works anywhere in the server.
+        """
         msg = await self._fetch_message(ctx, message_id)
         if msg is None or msg.author.id != self.bot.user.id:  # type: ignore[union-attr]
             embed = make_embed(action="error", title="Not Found", description="I can only delete my own messages in this channel.")
@@ -268,6 +282,30 @@ class ChannelsCog(commands.Cog):
         embed = make_embed(action="deletemess", title="Message Deleted", description=f"Deleted message `{message_id}`.")
         await ctx.send(embed=embed)
         await safe_delete(ctx.message)
+
+    @commands.command(name="reactmess")
+    @commands.guild_only()
+    @require_level("head_mod")
+    async def reactmess(self, ctx: commands.Context, message_id: int, emoji: str) -> None:
+        """React to a message with an emoji.
+        
+        Works anywhere in the server.
+        Usage: !reactmess <message_id> <emoji>
+        """
+        msg = await self._fetch_message(ctx, message_id)
+        if msg is None:
+            embed = make_embed(action="error", title="Not Found", description="Message not found in this channel.")
+            await ctx.send(embed=embed)
+            return
+
+        try:
+            await msg.add_reaction(emoji)
+            embed = make_embed(action="reactmess", title="✅ Reaction Added", description=f"Added {emoji} to message `{message_id}`.")
+            await ctx.send(embed=embed)
+            await safe_delete(ctx.message)
+        except discord.HTTPException:
+            embed = make_embed(action="error", title="❌ Invalid Emoji", description="That emoji is invalid or I don't have access to it.")
+            await ctx.send(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
