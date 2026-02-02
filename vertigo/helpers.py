@@ -415,28 +415,28 @@ async def call_huggingface_api(user_message: str, personality: str = "genz") -> 
         )
         
         system_prompt = get_personality_prompt(personality)
-        full_prompt = f"{system_prompt}\n\nUser: {user_message}\nAI:"
         
         # Log the request
         logger.info(f"Calling HuggingFace with model: {config.HUGGINGFACE_MODEL}")
         
-        response = client.text_generation(
-            full_prompt,
-            max_new_tokens=100,
+        # Use chat.completions() instead of text_generation()
+        response = client.chat.completions(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            max_tokens=100,
             temperature=0.8,
-            do_sample=True,
             top_p=0.9,
         )
         
-        logger.info(f"HuggingFace response type: {type(response)}, value: {response}")
+        logger.info(f"HuggingFace response: {response}")
         
-        # Handle response properly
-        if isinstance(response, str):
-            response_text = response.replace(full_prompt, "").strip()
-        elif isinstance(response, dict):
-            response_text = response.get("generated_text", "").replace(full_prompt, "").strip()
+        # Extract text from response
+        if hasattr(response, 'choices') and response.choices:
+            response_text = response.choices[0].message.content.strip()
         else:
-            response_text = str(response).replace(full_prompt, "").strip()
+            response_text = str(response).strip()
         
         return response_text if response_text else "nah fr fr the vibes are off rn, try again bestie 😅"
         
