@@ -277,6 +277,29 @@ class Database:
                 guild_id        INTEGER PRIMARY KEY,
                 role_ids        TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS mod_stats (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id        INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                action_type     TEXT NOT NULL,
+                timestamp       TEXT NOT NULL,
+                UNIQUE(guild_id, user_id, action_type, timestamp)
+            );
+
+            CREATE TABLE IF NOT EXISTS afk (
+                user_id         INTEGER NOT NULL,
+                guild_id        INTEGER NOT NULL,
+                reason          TEXT,
+                timestamp       TEXT NOT NULL,
+                pings           TEXT DEFAULT '',
+                PRIMARY KEY (user_id, guild_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS trial_mod_roles (
+                guild_id        INTEGER PRIMARY KEY,
+                role_ids        TEXT DEFAULT ''
+            );
             """
         )
         await self.conn.commit()
@@ -908,6 +931,240 @@ class Database:
         """Set staff hierarchy role IDs for a guild."""
         await self.conn.execute(
             "INSERT OR REPLACE INTO staff_hierarchy (guild_id, role_ids) VALUES (?, ?)",
+            (guild_id, _int_list_to_csv(role_ids)),
+        )
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # Mod Stats
+    # ---------------------------------------------------------------------
+
+    async def track_mod_action(self, *, guild_id: int, user_id: int, action_type: str) -> None:
+        """Track a moderation action for statistics."""
+        ts = utcnow().isoformat()
+        try:
+            await self.conn.execute(
+                "INSERT OR IGNORE INTO mod_stats (guild_id, user_id, action_type, timestamp) VALUES (?, ?, ?, ?)",
+                (guild_id, user_id, action_type, ts),
+            )
+            await self.conn.commit()
+        except Exception:
+            logger.exception("Failed to track mod action")
+
+    async def get_mod_stats(self, guild_id: int, user_id: int) -> dict:
+        """Get mod stats for a user."""
+        now = utcnow()
+        seven_days_ago = (now - timedelta(days=7)).isoformat()
+        fourteen_days_ago = (now - timedelta(days=14)).isoformat()
+        thirty_days_ago = (now - timedelta(days=30)).isoformat()
+
+        stats = {
+            'warns_7d': 0, 'warns_14d': 0, 'warns_30d': 0, 'warns_total': 0,
+            'mutes_7d': 0, 'mutes_14d': 0, 'mutes_30d': 0, 'mutes_total': 0,
+            'kicks_7d': 0, 'kicks_14d': 0, 'kicks_30d': 0, 'kicks_total': 0,
+            'bans_7d': 0, 'bans_14d': 0, 'bans_30d': 0, 'bans_total': 0,
+        }
+
+        for action in ['warns', 'mutes', 'kicks', 'bans']:
+            # Total
+            async with self.conn.execute(
+                "SELECT COUNT(*) as count FROM mod_stats WHERE guild_id = ? AND user_id = ? AND action_type = ?",
+                (guild_id, user_id, action)
+            ) as cur:
+                row = await cur.fetchone()
+                stats[f'{action}_total'] = row['count'] if row else 0
+
+            # Past 30 days
+            async with self.conn.execute(
+                "SELECT COUNT(*) as count FROM mod_stats WHERE guild_id = ? AND user_id = ? AND action_type = ? AND timestamp >= ?",
+                (guild_id, user_id, action, thirty_days_ago)
+            ) as cur:
+                row = await cur.fetchone()
+                stats[f'{action}_30d'] = row['count'] if row else 0
+
+            # Past 14 days
+            async with self.conn.execute(
+                "SELECT COUNT(*) as count FROM mod_stats WHERE guild_id = ? AND user_id = ? AND action_type = ? AND timestamp >= ?",
+                (guild_id, user_id, action, fourteen_days_ago)
+            ) as cur:
+                row = await cur.fetchone()
+                stats[f'{action}_14d'] = row['count'] if row else 0
+
+            # Past 7 days
+            async with self.conn.execute(
+                "SELECT COUNT(*) as count FROM mod_stats WHERE guild_id = ? AND user_id = ? AND action_type = ? AND timestamp >= ?",
+                (guild_id, user_id, action, seven_days_ago)
+            ) as cur:
+                row = await cur.fetchone()
+                stats[f'{action}_7d'] = row['count'] if row else 0
+
+        return stats
+
+    async def get_all_staff_rankings(self, guild_id: int) -> list[dict]:
+        """Get all staff ranked by total mod actions."""
+        async with self.conn.execute(
+            """
+            SELECT user_id, COUNT(*) as total 
+            FROM mod_stats 
+            WHERE guild_id = ? 
+            GROUP BY user_id 
+            ORDER BY total DESC
+            """,
+            (guild_id,)
+        ) as cur:
+            rows = await cur.fetchall()
+        return [{'user_id': row['user_id'], 'total': row['total']} for row in rows]
+
+    async def set_mod_stat(self, *, guild_id: int, user_id: int, action_type: str, period: str, value: int) -> None:
+        """Manually set a mod stat value."""
+        # This is a simplified version - we'll just add/remove entries to match the desired count
+        # First, get current count for the period
+        now = utcnow()
+        
+        if period == 'total':
+            # Count all entries
+            async with self.conn.execute(
+                "SELECT COUNT(*) as count FROM mod_stats WHERE guild_id = ? AND user_id = ? AND action_type = ?",
+                (guild_id, user_id, action_type)
+            ) as cur:
+                row = await cur.fetchone()
+                current = row['count'] if row else 0
+        else:
+            # Count entries within period
+            days = int(period.rstrip('d'))
+            cutoff = (now - timedelta(days=days)).isoformat()
+            async with self.conn.execute(
+                "SELECT COUNT(*) as count FROM mod_stats WHERE guild_id = ? AND user_id = ? AND action_type = ? AND timestamp >= ?",
+                (guild_id, user_id, action_type, cutoff)
+            ) as cur:
+                row = await cur.fetchone()
+                current = row['count'] if row else 0
+
+        diff = value - current
+        
+        if diff > 0:
+            # Add entries
+            for _ in range(diff):
+                ts = utcnow().isoformat()
+                await self.conn.execute(
+                    "INSERT INTO mod_stats (guild_id, user_id, action_type, timestamp) VALUES (?, ?, ?, ?)",
+                    (guild_id, user_id, action_type, ts)
+                )
+        elif diff < 0:
+            # Remove entries
+            if period == 'total':
+                await self.conn.execute(
+                    """
+                    DELETE FROM mod_stats 
+                    WHERE id IN (
+                        SELECT id FROM mod_stats 
+                        WHERE guild_id = ? AND user_id = ? AND action_type = ? 
+                        ORDER BY timestamp DESC 
+                        LIMIT ?
+                    )
+                    """,
+                    (guild_id, user_id, action_type, abs(diff))
+                )
+            else:
+                days = int(period.rstrip('d'))
+                cutoff = (now - timedelta(days=days)).isoformat()
+                await self.conn.execute(
+                    """
+                    DELETE FROM mod_stats 
+                    WHERE id IN (
+                        SELECT id FROM mod_stats 
+                        WHERE guild_id = ? AND user_id = ? AND action_type = ? AND timestamp >= ?
+                        ORDER BY timestamp DESC 
+                        LIMIT ?
+                    )
+                    """,
+                    (guild_id, user_id, action_type, cutoff, abs(diff))
+                )
+        
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # AFK System
+    # ---------------------------------------------------------------------
+
+    async def set_afk(self, *, user_id: int, guild_id: int, reason: str | None = None) -> None:
+        """Set a user as AFK."""
+        ts = utcnow().isoformat()
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO afk (user_id, guild_id, reason, timestamp, pings) VALUES (?, ?, ?, ?, '')",
+            (user_id, guild_id, reason or "AFK", ts),
+        )
+        await self.conn.commit()
+
+    async def remove_afk(self, *, user_id: int, guild_id: int) -> tuple[str, list[str]] | None:
+        """Remove AFK status and return reason + pings."""
+        async with self.conn.execute(
+            "SELECT reason, pings FROM afk WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        ) as cur:
+            row = await cur.fetchone()
+        
+        if row is None:
+            return None
+        
+        reason = row['reason']
+        pings_str = row['pings'] or ''
+        pings = [p for p in pings_str.split('|||') if p.strip()]
+        
+        await self.conn.execute("DELETE FROM afk WHERE user_id = ? AND guild_id = ?", (user_id, guild_id))
+        await self.conn.commit()
+        
+        return reason, pings
+
+    async def get_afk(self, *, user_id: int, guild_id: int) -> tuple[str, str] | None:
+        """Get AFK status for a user."""
+        async with self.conn.execute(
+            "SELECT reason, timestamp FROM afk WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        ) as cur:
+            row = await cur.fetchone()
+        
+        if row is None:
+            return None
+        
+        return row['reason'], row['timestamp']
+
+    async def add_afk_ping(self, *, user_id: int, guild_id: int, ping_info: str) -> None:
+        """Add a ping to AFK user's record."""
+        async with self.conn.execute(
+            "SELECT pings FROM afk WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        ) as cur:
+            row = await cur.fetchone()
+        
+        if row is None:
+            return
+        
+        current_pings = row['pings'] or ''
+        new_pings = f"{current_pings}|||{ping_info}" if current_pings else ping_info
+        
+        await self.conn.execute(
+            "UPDATE afk SET pings = ? WHERE user_id = ? AND guild_id = ?",
+            (new_pings, user_id, guild_id)
+        )
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # Trial Mod Roles
+    # ---------------------------------------------------------------------
+
+    async def get_trial_mod_roles(self, guild_id: int) -> list[int]:
+        """Get trial moderator role IDs for a guild."""
+        async with self.conn.execute("SELECT role_ids FROM trial_mod_roles WHERE guild_id = ?", (guild_id,)) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return []
+        return _csv_to_int_list(row["role_ids"])
+
+    async def set_trial_mod_roles(self, guild_id: int, role_ids: list[int]) -> None:
+        """Set trial moderator role IDs for a guild."""
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO trial_mod_roles (guild_id, role_ids) VALUES (?, ?)",
             (guild_id, _int_list_to_csv(role_ids)),
         )
         await self.conn.commit()

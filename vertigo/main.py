@@ -78,21 +78,23 @@ class ActionReasonModal(discord.ui.Modal):
             max_length=500
         ))
     
-    async def callback(self, interaction: discord.Interaction) -> None:
+    async def on_submit(self, interaction: discord.Interaction) -> None:
         reason = self.children[0].value
-        await interaction.response.defer(ephemeral=True)
         
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild not found.", ephemeral=True)
+                await interaction.response.send_message("Guild not found.", ephemeral=True)
                 return
                 
             member = guild.get_member(self.user_id)
             
             if not member:
-                await interaction.followup.send("User not found in server.", ephemeral=True)
+                await interaction.response.send_message("User not found in server.", ephemeral=True)
                 return
+            
+            # Defer after initial checks
+            await interaction.response.defer(ephemeral=True)
             
             if self.action_type == "unmute":
                 # Remove timeout
@@ -134,8 +136,14 @@ class ActionReasonModal(discord.ui.Modal):
             await log_to_modlog_channel(interaction.client, guild=guild, settings=settings, embed=log_embed, file=None)
             
         except Exception as e:
-            logger.error(f"Timeout action failed: {e}")
-            await interaction.followup.send("Failed to perform action.", ephemeral=True)
+            logger.error(f"Timeout action failed: {e}", exc_info=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("Failed to perform action.", ephemeral=True)
+                else:
+                    await interaction.followup.send("Failed to perform action.", ephemeral=True)
+            except Exception:
+                pass
 
 
 COGS: Sequence[str] = (
@@ -152,6 +160,7 @@ COGS: Sequence[str] = (
     "cogs.misc",
     "cogs.owner",
     "cogs.owner_commands",
+    "cogs.stats",
     "cogs.ai",
     "cogs.ai_moderation",
 )
@@ -242,8 +251,8 @@ async def main() -> None:
             usage = f"{prefix}{ctx.command.qualified_name} {ctx.command.signature}"
             embed = make_embed(
                 action="error",
-                title="**Usage**",
-                description=f"```{usage}```",
+                title="⚠️ Usage",
+                description=usage,
             )
             await ctx.send(embed=embed)
             return
@@ -254,8 +263,8 @@ async def main() -> None:
             usage = f"{prefix}{ctx.command.qualified_name} {ctx.command.signature}"
             embed = make_embed(
                 action="error",
-                title="**Usage**",
-                description=f"```{usage}```",
+                title="⚠️ Usage",
+                description=usage,
             )
             await ctx.send(embed=embed)
             return
