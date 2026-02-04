@@ -1,0 +1,204 @@
+"""Owner-only commands."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+
+import discord
+from discord.ext import commands
+
+from database import Database
+from helpers import make_embed, require_owner, safe_dm, get_ai_response, extract_dm_messages
+import config
+
+logger = logging.getLogger(__name__)
+
+
+class OwnerCog(commands.Cog):
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot = bot
+        self.start_time = discord.utils.utcnow()
+
+    @property
+    def db(self) -> Database:
+        return self.bot.db  # type: ignore[attr-defined]
+
+    @commands.command(name="dmuser")
+    @require_owner()
+    async def dmuser(self, ctx: commands.Context, user: discord.User, *, message: str) -> None:
+        await safe_dm(user, content=message)
+        embed = make_embed(action="success", title="✉️ Direct Message Sent", description=f"Sent a DM to 👤 {user}.")
+        await ctx.send(embed=embed)
+
+    @commands.command(name="waketime")
+    @require_owner()
+    async def waketime(self, ctx: commands.Context) -> None:
+        delta = discord.utils.utcnow() - self.start_time
+        days = delta.days
+        hours, rem = divmod(delta.seconds, 3600)
+        minutes, _ = divmod(rem, 60)
+        embed = make_embed(action="waketime", title="⏱️ Bot Uptime", description=f"{days} days, {hours} hours, {minutes} minutes")
+        await ctx.send(embed=embed)
+
+    @commands.command(name="banguild")
+    @require_owner()
+    async def banguild(self, ctx: commands.Context, guild_id: int, *, reason: str | None = None) -> None:
+        await self.db.blacklist_guild(guild_id=guild_id, reason=reason)
+        guild = self.bot.get_guild(guild_id)
+        if guild:
+            await guild.leave()
+        embed = make_embed(action="ban", title="🚫 Guild Banned", description=f"Blacklisted guild `{guild_id}`.")
+        await ctx.send(embed=embed)
+
+    @commands.command(name="unbanguild")
+    @require_owner()
+    async def unbanguild(self, ctx: commands.Context, guild_id: int) -> None:
+        await self.db.unblacklist_guild(guild_id=guild_id)
+        embed = make_embed(action="unban", title="✅ Guild Unbanned", description=f"Removed guild `{guild_id}` from blacklist.")
+        await ctx.send(embed=embed)
+
+    @commands.command(name="checkguild")
+    @require_owner()
+    async def checkguild(self, ctx: commands.Context, guild_id: int) -> None:
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            embed = make_embed(action="checkguild", title="🔍 Guild Check", description="Bot is not in that guild.")
+            await ctx.send(embed=embed)
+            return
+        embed = make_embed(action="checkguild", title="🔍 Guild Check", description=f"{guild.name} (`{guild.id}`)")
+        embed.add_field(name="👥 Members", value=str(guild.member_count or len(guild.members)), inline=True)
+        embed.add_field(name="👑 Owner", value=f"{guild.owner} ({guild.owner_id})", inline=False)
+        await ctx.send(embed=embed)
+
+    @commands.command(name="guildlist")
+    @require_owner()
+    async def guildlist(self, ctx: commands.Context) -> None:
+        lines = [f"{g.name} (`{g.id}`) - {g.member_count or len(g.members)} members" for g in self.bot.guilds]
+        description = "\n".join(lines[:50]) or "None"
+        embed = make_embed(action="guildlist", title="📍 Guild List", description=description)
+        await ctx.send(embed=embed)
+
+    @commands.command(name="nuke")
+    @commands.guild_only()
+    @require_owner()
+    async def nuke(self, ctx: commands.Context, channel: discord.TextChannel | None = None) -> None:
+        channel = channel or ctx.channel  # type: ignore[assignment]
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        confirm = await ctx.send("React with ✅ to confirm nuking this channel.")
+        await confirm.add_reaction("✅")
+
+        def check(reaction: discord.Reaction, user: discord.User) -> bool:
+            return reaction.message.id == confirm.id and str(reaction.emoji) == "✅" and user.id == ctx.author.id
+
+        try:
+           await self.bot.wait_for("reaction_add", check=check, timeout=30)
+        except asyncio.TimeoutError:
+           await confirm.edit(content="Timed out.")
+           return
+
+        # Add loading reaction for long-running operation
+        await confirm.add_reaction("🔃")
+
+        deleted = 0
+        while True:
+           batch = await channel.purge(limit=100)
+           deleted += len(batch)
+           if len(batch) < 100:
+               break
+
+        embed = make_embed(action="success", title="💣 Channel Nuked", description=f"Deleted **{deleted}** messages.")
+        await ctx.send(embed=embed)
+    
+    @commands.command(name="ai_target")
+    @commands.guild_only()
+    @require_owner()
+    async def ai_target(self, ctx: commands.Context, user: discord.Member, *, notes: str = "No notes") -> None:
+        """Target a user for AI roasting and trolling (Owner only).
+        
+        Usage:
+        ,ai_target @user [notes]
+        """
+        # Add to AI targets
+        await self.db.add_ai_target(
+            user_id=user.id,
+            guild_id=ctx.guild.id,
+            target_by=ctx.author.id,
+            notes=notes
+        )
+        
+        embed = make_embed(
+            action="success",
+            title="🤖 AI Targeting Enabled",
+            description=f"**Target:** {user.mention}\n**Notes:** {notes}\n\nLuna will now randomly roast and troll this user."
+        )
+        await ctx.send(embed=embed)
+    
+    @commands.command(name="ai_stop")
+    @commands.guild_only()
+    @require_owner()
+    async def ai_stop(self, ctx: commands.Context, user: discord.Member) -> None:
+        """Stop AI targeting for a user (Owner only).
+        
+        Usage:
+        ,ai_stop @user
+        """
+        await self.db.remove_ai_target(user_id=user.id, guild_id=ctx.guild.id)
+        
+        embed = make_embed(
+            action="success",
+            title="🤖 AI Targeting Disabled",
+            description=f"Stopped targeting {user.mention}."
+        )
+        await ctx.send(embed=embed)
+    
+    @commands.command(name="extract_dms")
+    @require_owner()
+    async def extract_dms(self, ctx: commands.Context, user: discord.User, limit: int = 50) -> None:
+        """Extract DM history with a user (Owner only).
+        
+        Usage:
+        ,extract_dms @user [limit]
+        """
+        embed = make_embed(
+            action="info",
+            title="📥 Extracting DMs",
+            description="Fetching DM history..."
+        )
+        msg = await ctx.send(embed=embed)
+        
+        messages = await extract_dm_messages(self.bot, user, limit)
+        
+        if not messages:
+            embed = make_embed(
+                action="error",
+                title="❌ No DMs Found",
+                description="No DM history found with this user."
+            )
+            await msg.edit(embed=embed)
+            return
+        
+        # Save to file
+        content = "\n".join(messages)
+        filename = f"dm_extract_{user.id}.txt"
+        
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(f"DM Extract for {user} ({user.id})\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(content)
+        
+        embed = make_embed(
+            action="success",
+            title="✅ DMs Extracted",
+            description=f"Extracted {len(messages)} messages with {user.mention}"
+        )
+        await msg.edit(embed=embed)
+        
+        # Send file
+        await ctx.send(file=discord.File(filename))
+
+
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(OwnerCog(bot))
