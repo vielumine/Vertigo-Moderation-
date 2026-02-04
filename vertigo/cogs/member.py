@@ -76,13 +76,21 @@ class MemberCog(commands.Cog):
         embed.add_field(name="📌 Roles", value=", ".join(roles) if roles else "None", inline=False)
         await ctx.send(embed=embed)
 
-    @commands.command(name="translate")
+    @commands.command(name="afk")
     @commands.guild_only()
-    @commands_channel_check()
-    async def translate(self, ctx: commands.Context, *, text: str) -> None:
-        """Translate text to English if a translation backend is available."""
-
-        embed = make_embed(action="translate", title="🌐 Translation", description="Translation backend not configured.")
+    async def afk(self, ctx: commands.Context, *, reason: str | None = None) -> None:
+        """Set yourself as AFK with an optional reason.
+        
+        Usage: !afk [reason]
+        """
+        await self.db.set_afk(user_id=ctx.author.id, guild_id=ctx.guild.id, reason=reason)
+        
+        reason_text = f" - {reason}" if reason else ""
+        embed = make_embed(
+            action="success",
+            title="💤 AFK Status Set",
+            description=f"You are now AFK{reason_text}\n\nYou'll be notified of any pings when you return."
+        )
         await ctx.send(embed=embed)
 
 

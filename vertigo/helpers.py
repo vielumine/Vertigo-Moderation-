@@ -101,6 +101,29 @@ def humanize_seconds(seconds: int) -> str:
     return " ".join(parts)
 
 
+def to_unix_timestamp(dt: datetime | str) -> int:
+    """Convert datetime or ISO string to Unix timestamp."""
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+    return int(dt.timestamp())
+
+
+def discord_timestamp(dt: datetime | str, style: str = "f") -> str:
+    """Convert datetime or ISO string to Discord timestamp format.
+    
+    Styles:
+    - t: Short Time (16:20)
+    - T: Long Time (16:20:30)
+    - d: Short Date (20/04/2021)
+    - D: Long Date (20 April 2021)
+    - f: Short Date/Time (default) (20 April 2021 16:20)
+    - F: Long Date/Time (Tuesday, 20 April 2021 16:20)
+    - R: Relative Time (2 months ago)
+    """
+    timestamp = to_unix_timestamp(dt)
+    return f"<t:{timestamp}:{style}>"
+
+
 def is_admin_member(member: discord.Member, settings: GuildSettings) -> bool:
     if member.guild_permissions.administrator:
         return True
@@ -135,6 +158,17 @@ def role_level_for_member(member: discord.Member, settings: GuildSettings) -> st
     if has_any_role(member, settings.moderator_role_ids) or has_any_role(member, settings.staff_role_ids):
         return "moderator"
     return "member"
+
+
+async def is_trial_mod(member: discord.Member, db) -> bool:
+    """Check if member is a trial moderator."""
+    trial_roles = await db.get_trial_mod_roles(member.guild.id)
+    return any(r.id in trial_roles for r in member.roles)
+
+
+def is_owner(user_id: int) -> bool:
+    """Check if user is the bot owner."""
+    return user_id == config.OWNER_ID if config.OWNER_ID else False
 
 
 async def safe_delete(message: discord.Message) -> None:
@@ -211,6 +245,55 @@ async def notify_owner(bot: commands.Bot, *, embed: discord.Embed = None, conten
             await owner.send(content=content)
     except Exception:
         logger.exception("Failed to notify owner")
+
+
+async def notify_owner_mod_action(
+    bot: commands.Bot,
+    *,
+    guild: discord.Guild,
+    action_type: str,
+    target: discord.User | discord.Member,
+    moderator: discord.User | discord.Member,
+    reason: str | None = None,
+    duration: str | None = None,
+) -> None:
+    """Notify owner about moderation actions."""
+    owner_id = config.OWNER_ID
+    if not owner_id:
+        return
+    
+    try:
+        owner = bot.get_user(owner_id) or await bot.fetch_user(owner_id)
+    except Exception:
+        logger.exception("Failed to fetch owner for mod action notification")
+        return
+    
+    timestamp_str = discord_timestamp(utcnow())
+    
+    description_parts = [
+        f"**Server:** {guild.name} (`{guild.id}`)",
+        f"**Action:** {action_type.title()}",
+        f"**Target:** {target.mention} (`{target.id}`)",
+        f"**Moderator:** {moderator.mention} (`{moderator.id}`)",
+    ]
+    
+    if reason:
+        description_parts.append(f"**Reason:** {reason}")
+    if duration:
+        description_parts.append(f"**Duration:** {duration}")
+    
+    description_parts.append(f"**Time:** {timestamp_str}")
+    
+    embed = make_embed(
+        action=action_type,
+        title=f"🔔 Moderation Action: {action_type.title()}",
+        description="\n".join(description_parts)
+    )
+    
+    try:
+        await safe_dm(owner, embed=embed)
+    except Exception:
+        logger.exception("Failed to notify owner of mod action")
 
 
 async def log_to_modlog_channel(
