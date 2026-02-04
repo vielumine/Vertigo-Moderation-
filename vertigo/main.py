@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import random
+from datetime import timedelta
 from typing import Sequence
 
 import discord
@@ -178,6 +179,7 @@ COGS: Sequence[str] = (
     "cogs.stats",
     "cogs.ai",
     "cogs.ai_moderation",
+    "cogs.wmr",
 )
 
 
@@ -451,7 +453,7 @@ async def main() -> None:
                         # Take timeout action
                         try:
                             # Timeout the user
-                            timeout_duration = discord.utils.utcnow() + discord.utils.parse_time_unit(timeout_settings.timeout_duration, convert=True)
+                            timeout_duration = discord.utils.utcnow() + timedelta(seconds=timeout_settings.timeout_duration)
                             await member.timeout(timeout_duration, reason=f"Timeout: Used prohibited term '{matched_phrase}'")
                             
                             # Delete the violating message
