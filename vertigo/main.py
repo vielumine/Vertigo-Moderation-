@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import random
+from datetime import timedelta
 from typing import Sequence
 
 import discord
@@ -84,17 +85,21 @@ class ActionReasonModal(discord.ui.Modal):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.response.send_message("Guild not found.", ephemeral=True)
+                logger.error(f"TimeoutActionView: Guild not found for guild_id {self.guild_id}")
+                await interaction.response.send_message("❌ Guild not found.", ephemeral=True)
                 return
                 
             member = guild.get_member(self.user_id)
             
             if not member:
-                await interaction.response.send_message("User not found in server.", ephemeral=True)
+                logger.warning(f"TimeoutActionView: Member {self.user_id} not found in guild {self.guild_id}")
+                await interaction.response.send_message("❌ User not found in server.", ephemeral=True)
                 return
             
-            # Defer after initial checks
+            # Acknowledge interaction first
             await interaction.response.defer(ephemeral=True)
+            
+            logger.info(f"TimeoutActionView: Processing {self.action_type} for user {self.user_id} by {interaction.user.id}")
             
             if self.action_type == "unmute":
                 # Remove timeout
@@ -135,15 +140,26 @@ class ActionReasonModal(discord.ui.Modal):
             )
             await log_to_modlog_channel(interaction.client, guild=guild, settings=settings, embed=log_embed, file=None)
             
-        except Exception as e:
-            logger.error(f"Timeout action failed: {e}", exc_info=True)
+            logger.info(f"TimeoutActionView: Successfully completed {self.action_type} for user {self.user_id}")
+            
+        except discord.HTTPException as e:
+            logger.error(f"TimeoutActionView: Discord HTTP error: {e.status} - {e.text}", exc_info=True)
             try:
                 if not interaction.response.is_done():
-                    await interaction.response.send_message("Failed to perform action.", ephemeral=True)
+                    await interaction.response.send_message(f"❌ Discord API error: {e.text}", ephemeral=True)
                 else:
-                    await interaction.followup.send("Failed to perform action.", ephemeral=True)
+                    await interaction.followup.send(f"❌ Discord API error: {e.text}", ephemeral=True)
             except Exception:
                 pass
+        except Exception as e:
+            logger.error(f"TimeoutActionView: Unexpected error: {type(e).__name__}: {e}", exc_info=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(f"❌ Failed to perform action: {type(e).__name__}", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"❌ Failed to perform action: {type(e).__name__}", ephemeral=True)
+            except Exception:
+                logger.error("Failed to send error message to user", exc_info=True)
 
 
 COGS: Sequence[str] = (
@@ -163,6 +179,7 @@ COGS: Sequence[str] = (
     "cogs.stats",
     "cogs.ai",
     "cogs.ai_moderation",
+    "cogs.wmr",
 )
 
 
@@ -276,7 +293,7 @@ async def main() -> None:
 
     @bot.event
     async def on_message(message: discord.Message) -> None:
-        """Handle mentions, DMs, AI responses, and blacklist checks."""
+        """Handle mentions, DMs, AI responses, AFK system, and blacklist checks."""
         # Check if user is blacklisted first
         if await bot.db.is_blacklisted(user_id=message.author.id):
             if message.content.startswith(await _get_prefix(bot, message)):
@@ -287,6 +304,62 @@ async def main() -> None:
         # Ignore bot messages
         if message.author.bot:
             return
+        
+        # AFK System - Check if user was AFK and is now back
+        if message.guild:
+            afk_data = await bot.db.remove_afk(user_id=message.author.id, guild_id=message.guild.id)
+            if afk_data:
+                reason, pings = afk_data
+                if pings:
+                    # Build ping notification
+                    ping_lines = []
+                    for ping in pings[:10]:  # Show max 10 pings
+                        ping_lines.append(ping)
+                    
+                    ping_text = "\n".join(ping_lines)
+                    embed = make_embed(
+                        action="success",
+                        title="👋 Welcome Back!",
+                        description=f"You were AFK: {reason}\n\n**Who pinged you?**\n{ping_text}"
+                    )
+                else:
+                    embed = make_embed(
+                        action="success",
+                        title="👋 Welcome Back!",
+                        description=f"You were AFK: {reason}\n\nNo one pinged you while you were away."
+                    )
+                
+                try:
+                    await message.channel.send(embed=embed, delete_after=10)
+                except Exception:
+                    pass
+        
+        # AFK System - Check if message mentions AFK users
+        if message.guild and message.mentions:
+            for mentioned_user in message.mentions:
+                if mentioned_user.id == message.author.id:
+                    continue  # Skip self-mentions
+                
+                afk_status = await bot.db.get_afk(user_id=mentioned_user.id, guild_id=message.guild.id)
+                if afk_status:
+                    reason, timestamp = afk_status
+                    embed = make_embed(
+                        action="info",
+                        title="💤 User is AFK",
+                        description=f"{mentioned_user.mention} is currently AFK: {reason}"
+                    )
+                    try:
+                        await message.channel.send(embed=embed, delete_after=10)
+                    except Exception:
+                        pass
+                    
+                    # Record the ping
+                    ping_info = f"{message.author.mention} [Jump]({message.jump_url})"
+                    await bot.db.add_afk_ping(
+                        user_id=mentioned_user.id,
+                        guild_id=message.guild.id,
+                        ping_info=ping_info
+                    )
         
         # Handle DM messages
         if message.guild is None:
@@ -380,7 +453,7 @@ async def main() -> None:
                         # Take timeout action
                         try:
                             # Timeout the user
-                            timeout_duration = discord.utils.utcnow() + discord.utils.parse_time_unit(timeout_settings.timeout_duration, convert=True)
+                            timeout_duration = discord.utils.utcnow() + timedelta(seconds=timeout_settings.timeout_duration)
                             await member.timeout(timeout_duration, reason=f"Timeout: Used prohibited term '{matched_phrase}'")
                             
                             # Delete the violating message

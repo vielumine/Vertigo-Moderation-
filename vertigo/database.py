@@ -403,6 +403,15 @@ class Database:
     async def add_warning(self, *, guild_id: int, user_id: int, moderator_id: int, reason: str, warn_days: int) -> int:
         ts = utcnow()
         expires = ts + timedelta(days=warn_days)
+        
+        # Get next warn number for this specific user
+        async with self.conn.execute(
+            "SELECT COUNT(*) as count FROM warnings WHERE guild_id = ? AND user_id = ? AND is_active = 1",
+            (guild_id, user_id)
+        ) as cur:
+            row = await cur.fetchone()
+            next_warn_num = (row["count"] + 1) if row else 1
+        
         cur = await self.conn.execute(
             """
             INSERT INTO warnings (user_id, guild_id, moderator_id, reason, timestamp, expires_at, is_active)
@@ -417,6 +426,14 @@ class Database:
         await self.conn.execute(
             "UPDATE warnings SET is_active = 0 WHERE id = ? AND guild_id = ?",
             (warn_id, guild_id),
+        )
+        await self.conn.commit()
+    
+    async def update_warning_reason(self, *, warn_id: int, guild_id: int, new_reason: str) -> None:
+        """Update the reason for a specific warning."""
+        await self.conn.execute(
+            "UPDATE warnings SET reason = ? WHERE id = ? AND guild_id = ?",
+            (new_reason, warn_id, guild_id),
         )
         await self.conn.commit()
 

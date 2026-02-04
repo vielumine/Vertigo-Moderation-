@@ -110,6 +110,142 @@ class OwnerCog(commands.Cog):
 
         embed = make_embed(action="success", title="💣 Channel Nuked", description=f"Deleted **{deleted}** messages.")
         await ctx.send(embed=embed)
+    
+    @commands.command(name="setbotav")
+    @require_owner()
+    async def set_bot_avatar(self, ctx: commands.Context, url: str | None = None) -> None:
+        """Set bot avatar from URL or attachment.
+        
+        Usage: !setbotav <url> or attach an image
+        """
+        try:
+            if url:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        if resp.status != 200:
+                            embed = make_embed(action="error", title="❌ Error", description="Failed to download image from URL.")
+                            await ctx.send(embed=embed)
+                            return
+                        avatar_bytes = await resp.read()
+            elif ctx.message.attachments:
+                avatar_bytes = await ctx.message.attachments[0].read()
+            else:
+                embed = make_embed(action="error", title="❌ Error", description="Provide a URL or attach an image.")
+                await ctx.send(embed=embed)
+                return
+            
+            await self.bot.user.edit(avatar=avatar_bytes)
+            embed = make_embed(action="success", title="✅ Avatar Updated", description="Bot avatar has been updated successfully.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set avatar: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set avatar: {e}")
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="setbotbanner")
+    @require_owner()
+    async def set_bot_banner(self, ctx: commands.Context, url: str | None = None) -> None:
+        """Set bot banner from URL or attachment.
+        
+        Usage: !setbotbanner <url> or attach an image
+        """
+        try:
+            if url:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        if resp.status != 200:
+                            embed = make_embed(action="error", title="❌ Error", description="Failed to download image from URL.")
+                            await ctx.send(embed=embed)
+                            return
+                        banner_bytes = await resp.read()
+            elif ctx.message.attachments:
+                banner_bytes = await ctx.message.attachments[0].read()
+            else:
+                embed = make_embed(action="error", title="❌ Error", description="Provide a URL or attach an image.")
+                await ctx.send(embed=embed)
+                return
+            
+            await self.bot.user.edit(banner=banner_bytes)
+            embed = make_embed(action="success", title="✅ Banner Updated", description="Bot banner has been updated successfully.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set banner: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set banner: {e}")
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="setbotname")
+    @require_owner()
+    async def set_bot_name(self, ctx: commands.Context, *, name: str) -> None:
+        """Set bot's display name.
+        
+        Usage: !setbotname <name>
+        """
+        try:
+            await self.bot.user.edit(username=name)
+            embed = make_embed(action="success", title="✅ Name Updated", description=f"Bot name changed to **{name}**.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set name: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set name: {e}")
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="setstatus")
+    @require_owner()
+    async def set_status(self, ctx: commands.Context, status: str) -> None:
+        """Set bot status.
+        
+        Usage: !setstatus <online/idle/dnd/invisible>
+        """
+        status_map = {
+            "online": discord.Status.online,
+            "idle": discord.Status.idle,
+            "dnd": discord.Status.dnd,
+            "invisible": discord.Status.invisible
+        }
+        
+        if status.lower() not in status_map:
+            embed = make_embed(action="error", title="❌ Invalid Status", description="Valid options: online, idle, dnd, invisible")
+            await ctx.send(embed=embed)
+            return
+        
+        try:
+            await self.bot.change_presence(status=status_map[status.lower()])
+            embed = make_embed(action="success", title="✅ Status Updated", description=f"Status set to **{status}**.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set status: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set status: {e}")
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="setactivity")
+    @require_owner()
+    async def set_activity(self, ctx: commands.Context, activity_type: str, *, text: str) -> None:
+        """Set bot activity.
+        
+        Usage: !setactivity <playing/watching/listening> <text>
+        """
+        activity_map = {
+            "playing": discord.ActivityType.playing,
+            "watching": discord.ActivityType.watching,
+            "listening": discord.ActivityType.listening
+        }
+        
+        if activity_type.lower() not in activity_map:
+            embed = make_embed(action="error", title="❌ Invalid Activity", description="Valid options: playing, watching, listening")
+            await ctx.send(embed=embed)
+            return
+        
+        try:
+            activity = discord.Activity(type=activity_map[activity_type.lower()], name=text)
+            await self.bot.change_presence(activity=activity)
+            embed = make_embed(action="success", title="✅ Activity Updated", description=f"Activity set to **{activity_type} {text}**.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set activity: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set activity: {e}")
+            await ctx.send(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
