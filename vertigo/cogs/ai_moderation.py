@@ -538,22 +538,22 @@ class TimeoutPanelView(discord.ui.View):
             return False
         return True
     
-    @discord.ui.button(label="Add/Remove Phrase", style=discord.ButtonStyle.secondary, emoji="📝")
+    @discord.ui.button(label="Add/Remove Phrase", style=discord.ButtonStyle.primary, emoji="📝")
     async def phrase_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         modal = PhraseModal(self.settings)
         await interaction.response.send_modal(modal)
     
-    @discord.ui.button(label="Add Alert Role", style=discord.ButtonStyle.secondary, emoji="🔔")
+    @discord.ui.button(label="Add Alert Role", style=discord.ButtonStyle.primary, emoji="🔔")
     async def alert_role_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         modal = AlertRoleModal(self.settings)
         await interaction.response.send_modal(modal)
     
-    @discord.ui.button(label="Add Alert Channel", style=discord.ButtonStyle.secondary, emoji="📢")
+    @discord.ui.button(label="Add Alert Channel", style=discord.ButtonStyle.primary, emoji="📢")
     async def alert_channel_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         modal = AlertChannelModal(self.settings)
         await interaction.response.send_modal(modal)
     
-    @discord.ui.button(label="Set Timeout Duration", style=discord.ButtonStyle.secondary, emoji="⏱️")
+    @discord.ui.button(label="Set Timeout Duration", style=discord.ButtonStyle.primary, emoji="⏱️")
     async def timeout_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         modal = TimeoutDurationModal(self.settings)
         await interaction.response.send_modal(modal)

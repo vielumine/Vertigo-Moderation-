@@ -75,23 +75,23 @@ class ModerationUndoView(discord.ui.View):
             return False
         return True
     
-    @discord.ui.button(label="Undo Warn", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Warn", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_warn_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_warn(interaction)
     
-    @discord.ui.button(label="Undo Mute", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Mute", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_mute_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_mute(interaction)
     
-    @discord.ui.button(label="Undo Warn Only", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Warn Only", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_warn_only_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_warn(interaction)
     
-    @discord.ui.button(label="Undo Mute Only", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Mute Only", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_mute_only_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_mute(interaction)
     
-    @discord.ui.button(label="Undo Warn & Mute", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Warn & Mute", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_both_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         # We need to defer because we might do multiple responses or it might take time
         await interaction.response.defer(ephemeral=True)
@@ -107,7 +107,7 @@ class ModerationUndoView(discord.ui.View):
         else:
             await interaction.followup.send("❌ Failed to undo actions.", ephemeral=True)
     
-    @discord.ui.button(label="Undo Ban", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Ban", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_ban_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_ban(interaction)
     

@@ -51,7 +51,7 @@ class TimeoutActionView(discord.ui.View):
         modal = ActionReasonModal("unmute", self.user_id, self.guild_id)
         await interaction.response.send_modal(modal)
     
-    @discord.ui.button(label="Warn", style=discord.ButtonStyle.secondary, emoji="⚠️")
+    @discord.ui.button(label="Warn", style=discord.ButtonStyle.danger, emoji="⚠️")
     async def warn_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         modal = ActionReasonModal("warn", self.user_id, self.guild_id)
         await interaction.response.send_modal(modal)

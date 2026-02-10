@@ -46,27 +46,27 @@ class HelpView(discord.ui.View):
     async def _show(self, interaction: discord.Interaction, key: str) -> None:
         await interaction.response.edit_message(embed=self.pages[key], view=self)
 
-    @discord.ui.button(label="⚠️ Moderation", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="⚠️ Moderation", style=discord.ButtonStyle.primary)
     async def moderation(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await self._show(interaction, "moderation")
 
-    @discord.ui.button(label="📌 Roles", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="📌 Roles", style=discord.ButtonStyle.primary)
     async def roles(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await self._show(interaction, "roles")
 
-    @discord.ui.button(label="⏱️ Channels", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="⏱️ Channels", style=discord.ButtonStyle.primary)
     async def channels(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await self._show(interaction, "channels")
 
-    @discord.ui.button(label="📋 Miscellaneous", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="📋 Miscellaneous", style=discord.ButtonStyle.primary)
     async def misc(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await self._show(interaction, "misc")
 
-    @discord.ui.button(label="🧹 Cleaning", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="🧹 Cleaning", style=discord.ButtonStyle.primary)
     async def cleaning(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await self._show(interaction, "cleaning")
 
-    @discord.ui.button(label="👤 Member", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="👤 Member", style=discord.ButtonStyle.primary)
     async def member(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await self._show(interaction, "member")
 
