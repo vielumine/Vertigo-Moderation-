@@ -13,10 +13,13 @@ from database import Database
 from helpers import (
     add_loading_reaction,
     make_embed,
+    notify_owner_action,
     require_level,
     utcnow,
     parse_duration,
     log_to_modlog_channel,
+    safe_delete,
+    humanize_seconds,
 )
 
 logger = logging.getLogger(__name__)
@@ -146,8 +149,8 @@ class WMR(commands.Cog):
             )
             
             embed.add_field(
-                name="🆔 IDs",
-                value=f"**Warn #{warn_number}** (DB: `{warn_id}`)\n**Mute ID:** `{mute_id}`",
+                name="🆔 Warn ID",
+                value=f"**Warn #{warn_number}** (DB: `{warn_id}`)",
                 inline=True
             )
             
@@ -170,6 +173,10 @@ class WMR(commands.Cog):
                 file=None
             )
             
+            # Track mod stat
+            await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="warns")
+            await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="mutes")
+            
             await ctx.send(embed=embed)
             
             # Try to DM the user
@@ -182,6 +189,32 @@ class WMR(commands.Cog):
                 await member.send(embed=dm_embed)
             except Exception:
                 pass  # Silently fail if DM fails
+            
+            # Delete both messages (staff command and original user message)
+            try:
+                await safe_delete(ctx.message)
+            except Exception:
+                logger.debug("Failed to delete staff command message")
+            
+            try:
+                await safe_delete(referenced_msg)
+            except Exception:
+                logger.debug("Failed to delete original user message")
+            
+            # Notify owner of the action
+            await notify_owner_action(
+                self.bot,
+                action="wmr",
+                guild_name=ctx.guild.name,
+                guild_id=ctx.guild.id,
+                target=str(member),
+                target_id=member.id,
+                moderator=str(ctx.author),
+                moderator_id=ctx.author.id,
+                reason=f"WMR: {reason}",
+                duration=humanize_seconds(duration_seconds),
+                extra_info=f"Original message: {message_preview}"
+            )
             
         except discord.Forbidden:
             embed = make_embed(
