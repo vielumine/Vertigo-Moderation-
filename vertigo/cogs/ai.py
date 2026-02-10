@@ -49,17 +49,17 @@ class AIButtonView(discord.ui.View):
             return False
         return True
     
-    @discord.ui.button(label="Toggle Mentions", custom_id="ai_toggle_mentions", style=discord.ButtonStyle.secondary, emoji="📣")
+    @discord.ui.button(label="Toggle Mentions", custom_id="ai_toggle_mentions", style=discord.ButtonStyle.primary, emoji="📣")
     async def toggle_mentions_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         new_value = not self.ai_settings.respond_to_mentions
         await self.update_setting("respond_to_mentions", new_value, interaction, f"Mentions response {'enabled' if new_value else 'disabled'}")
     
-    @discord.ui.button(label="Toggle DMs", custom_id="ai_toggle_dms", style=discord.ButtonStyle.secondary, emoji="💬")
+    @discord.ui.button(label="Toggle DMs", custom_id="ai_toggle_dms", style=discord.ButtonStyle.primary, emoji="💬")
     async def toggle_dms_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         new_value = not self.ai_settings.respond_to_dms
         await self.update_setting("respond_to_dms", new_value, interaction, f"DM response {'enabled' if new_value else 'disabled'}")
     
-    @discord.ui.button(label="Toggle Moderation", custom_id="ai_toggle_moderation", style=discord.ButtonStyle.secondary, emoji="🛡️")
+    @discord.ui.button(label="Toggle Moderation", custom_id="ai_toggle_moderation", style=discord.ButtonStyle.primary, emoji="🛡️")
     async def toggle_moderation_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         new_value = not self.ai_settings.help_moderation
         await self.update_setting("help_moderation", new_value, interaction, f"Moderation help {'enabled' if new_value else 'disabled'}")

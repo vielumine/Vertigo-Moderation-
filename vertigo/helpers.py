@@ -5,6 +5,12 @@ This module contains:
 - permission checks based on per-guild settings
 - embed / response builders using the red+gray theme
 - pagination views for longer command output
+
+Button Color Scheme (Discord ButtonStyle):
+- Red (danger): Delete, undo, remove, dangerous actions
+- Green (success): Confirm, approve, yes, save
+- Blue (primary): Info, view, select, filter, edit
+- Gray (secondary): Cancel, back, no, neutral/navigation actions
 """
 
 from __future__ import annotations

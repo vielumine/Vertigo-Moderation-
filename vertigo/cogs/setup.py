@@ -138,27 +138,27 @@ class SetupView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="🎯 Set Roles", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="🎯 Set Roles", style=discord.ButtonStyle.primary)
     async def set_roles(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_RolesModal(db=self.db, guild_id=self.guild_id))
 
-    @discord.ui.button(label="📜 Set Modlog Channel", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="📜 Set Modlog Channel", style=discord.ButtonStyle.primary)
     async def set_modlog(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_ChannelModal(db=self.db, guild_id=self.guild_id, field="modlog_channel_id", label="Set Modlog Channel"))
 
-    @discord.ui.button(label="⏱️ Set Warn Duration", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="⏱️ Set Warn Duration", style=discord.ButtonStyle.primary)
     async def set_warn_duration(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_WarnDurationModal(db=self.db, guild_id=self.guild_id))
 
-    @discord.ui.button(label="🔧 Change Prefix", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="🔧 Change Prefix", style=discord.ButtonStyle.primary)
     async def set_prefix(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_PrefixModal(db=self.db, guild_id=self.guild_id))
 
-    @discord.ui.button(label="🛑 Set Commands Channel", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="🛑 Set Commands Channel", style=discord.ButtonStyle.primary)
     async def set_commands_channel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_ChannelModal(db=self.db, guild_id=self.guild_id, field="commands_channel_id", label="Set Commands Channel"))
 
-    @discord.ui.button(label="👁️ See Settings", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="👁️ See Settings", style=discord.ButtonStyle.secondary)
     async def see_settings(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         settings = await self.db.get_guild_settings(self.guild_id, default_prefix=config.DEFAULT_PREFIX)
         embed = make_embed(action="setup", title="Current Settings")
@@ -244,19 +244,19 @@ class AdminSetupView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="⏱️ Set Flag Duration", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="⏱️ Set Flag Duration", style=discord.ButtonStyle.primary)
     async def set_flag_duration(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_FlagDurationModal(db=self.db, guild_id=self.guild_id))
 
-    @discord.ui.button(label="📂 Set Lock Categories", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="📂 Set Lock Categories", style=discord.ButtonStyle.primary)
     async def set_lock_categories(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_LockCategoriesModal(db=self.db, guild_id=self.guild_id))
 
-    @discord.ui.button(label="👨‍💼 Add Admin Role", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="👨‍💼 Add Admin Role", style=discord.ButtonStyle.primary)
     async def add_admin_roles(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_AdminRolesModal(db=self.db, guild_id=self.guild_id))
 
-    @discord.ui.button(label="👁️ See Settings", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="👁️ See Settings", style=discord.ButtonStyle.secondary)
     async def see_settings(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         settings = await self.db.get_guild_settings(self.guild_id, default_prefix=config.DEFAULT_PREFIX)
         embed = make_embed(action="adminsetup", title="Admin Settings")
