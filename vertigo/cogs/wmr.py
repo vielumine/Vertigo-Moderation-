@@ -98,6 +98,10 @@ class WMR(commands.Cog):
                 await ctx.send(embed=embed)
                 return
             
+            # Get current active warn count for this user to determine the display number
+            active_warnings = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)
+            warn_number = len(active_warnings) + 1
+            
             # Add warning
             warn_id = await self.db.add_warning(
                 guild_id=ctx.guild.id,
@@ -143,7 +147,7 @@ class WMR(commands.Cog):
             
             embed.add_field(
                 name="🆔 IDs",
-                value=f"**Warning ID:** `{warn_id}`\n**Mute ID:** `{mute_id}`",
+                value=f"**Warn #{warn_number}** (DB: `{warn_id}`)\n**Mute ID:** `{mute_id}`",
                 inline=True
             )
             
