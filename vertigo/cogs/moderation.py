@@ -24,6 +24,7 @@ from helpers import (
     log_to_modlog_channel,
     make_embed,
     notify_owner,
+    notify_owner_action,
     parse_duration,
     require_level,
     safe_delete,
@@ -228,6 +229,187 @@ class ModerationUndoView(discord.ui.View):
             await interaction.response.send_message("❌ Failed to undo ban.", ephemeral=True)
 
 
+class EditReasonModal(discord.ui.Modal, title="Edit Warning Reason"):
+    """Modal for editing a warning reason."""
+    
+    new_reason = discord.ui.TextInput(
+        label="New Reason",
+        style=discord.TextStyle.paragraph,
+        placeholder="Enter the new reason for this warning...",
+        required=True,
+        max_length=500,
+        min_length=1
+    )
+    
+    def __init__(self, warn_id: int, guild_id: int, member: discord.Member, original_reason: str):
+        super().__init__()
+        self.warn_id = warn_id
+        self.guild_id = guild_id
+        self.member = member
+        self.original_reason = original_reason
+    
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        new_reason = self.new_reason.value.strip()
+        
+        # Validate new reason
+        if not new_reason:
+            await interaction.response.send_message("❌ Reason cannot be empty.", ephemeral=True)
+            return
+        
+        if new_reason == self.original_reason:
+            await interaction.response.send_message("❌ New reason is the same as the original reason.", ephemeral=True)
+            return
+        
+        try:
+            # Update the warning reason in the database
+            await interaction.client.db.update_warning_reason(
+                warn_id=self.warn_id,
+                guild_id=self.guild_id,
+                new_reason=new_reason
+            )
+            
+            # Log the edit action
+            await interaction.client.db.add_modlog(
+                guild_id=self.guild_id,
+                action_type="warn_edit",
+                user_id=self.member.id,
+                moderator_id=interaction.user.id,
+                reason=f"Edited warn {self.warn_id}: '{self.original_reason}' → '{new_reason}'"
+            )
+            
+            embed = make_embed(
+                action="warnings",
+                title="✅ Warning Reason Updated",
+                description=f"Updated reason for warning `#{self.warn_id}` for {self.member.mention}."
+            )
+            embed.add_field(name="Original Reason", value=self.original_reason[:1000] if len(self.original_reason) <= 1000 else self.original_reason[:997] + "...", inline=False)
+            embed.add_field(name="New Reason", value=new_reason[:1000] if len(new_reason) <= 1000 else new_reason[:997] + "...", inline=False)
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error updating warning reason: {e}")
+            await interaction.response.send_message("❌ Failed to update warning reason. Please try again.", ephemeral=True)
+
+
+class EditReasonSelect(discord.ui.Select):
+    """Select menu for choosing which warning to edit."""
+    
+    def __init__(self, warnings: list, member: discord.Member, author_id: int):
+        self.member = member
+        self.author_id = author_id
+        
+        # Create options from warnings (max 25 options)
+        options = []
+        for idx, row in enumerate(warnings[:25], start=1):
+            reason = row['reason']
+            truncated_reason = (reason[:50] + "...") if len(reason) > 50 else reason
+            options.append(
+                discord.SelectOption(
+                    label=f"Warn #{idx} - {truncated_reason}",
+                    value=str(row['id']),
+                    description=f"ID: {row['id']} - Click to edit reason"
+                )
+            )
+        
+        super().__init__(
+            placeholder="Select a warning to edit...",
+            options=options,
+            min_values=1,
+            max_values=1
+        )
+    
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("This menu isn't for you.", ephemeral=True)
+            return
+        
+        selected_warn_id = int(self.values[0])
+        
+        # Find the selected warning
+        selected_warning = None
+        for row in self.warnings:
+            if row['id'] == selected_warn_id:
+                selected_warning = row
+                break
+        
+        if not selected_warning:
+            await interaction.response.send_message("❌ Warning not found. It may have been removed or expired.", ephemeral=True)
+            return
+        
+        # Show the modal to edit the reason
+        modal = EditReasonModal(
+            warn_id=selected_warn_id,
+            guild_id=interaction.guild.id,
+            member=self.member,
+            original_reason=selected_warning['reason']
+        )
+        await interaction.response.send_modal(modal)
+
+
+class EditReasonView(discord.ui.View):
+    """View containing the edit reason select menu."""
+    
+    def __init__(self, warnings: list, member: discord.Member, author_id: int):
+        super().__init__(timeout=180)
+        self.warnings = warnings
+        self.member = member
+        self.author_id = author_id
+        
+        # Add the select menu
+        self.select_menu = EditReasonSelect(warnings, member, author_id)
+        self.select_menu.warnings = warnings  # Pass warnings to the select
+        self.add_item(self.select_menu)
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("This menu isn't for you.", ephemeral=True)
+            return False
+        return True
+
+
+class WarningsWithEditView(discord.ui.View):
+    """Pagination view with edit reason button for warnings."""
+    
+    def __init__(self, pages: list[Page], warnings: list, member: discord.Member, author_id: int, timeout: float = 180):
+        super().__init__(timeout=timeout)
+        self.pages = pages
+        self.warnings = warnings
+        self.member = member
+        self.author_id = author_id
+        self.index = 0
+        
+        # Set initial button states
+        self.prev_button.disabled = len(pages) <= 1
+        self.next_button.disabled = len(pages) <= 1
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("This menu isn't for you.", ephemeral=True)
+            return False
+        return True
+    
+    async def _render(self, interaction: discord.Interaction) -> None:
+        page = self.pages[self.index]
+        await interaction.response.edit_message(embed=page.embed, attachments=[page.file] if page.file else [], view=self)
+    
+    @discord.ui.button(label="Prev", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.index = (self.index - 1) % len(self.pages)
+        await self._render(interaction)
+    
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.index = (self.index + 1) % len(self.pages)
+        await self._render(interaction)
+    
+    @discord.ui.button(label="Edit Reason", style=discord.ButtonStyle.primary, emoji="✏️")
+    async def edit_reason_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        # Show the edit reason view with select menu
+        edit_view = EditReasonView(self.warnings, self.member, self.author_id)
+        await interaction.response.send_message("Select a warning to edit:", view=edit_view, ephemeral=True)
+
+
 class ModerationCog(commands.Cog):
     """Moderator+ commands."""
 
@@ -323,12 +505,18 @@ class ModerationCog(commands.Cog):
         # Track mod stat
         await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="warns")
 
-        owner_embed = make_embed(
+        # Notify owner of the action
+        await notify_owner_action(
+            self.bot,
             action="warn",
-            title="Staff Action: warn",
-            description=f"Guild: **{ctx.guild.name}** (`{ctx.guild.id}`)\nUser: {member} (`{member.id}`)\nModerator: {ctx.author} (`{ctx.author.id}`)\nReason: {reason}",
+            guild_name=ctx.guild.name,
+            guild_id=ctx.guild.id,
+            target=str(member),
+            target_id=member.id,
+            moderator=str(ctx.author),
+            moderator_id=ctx.author.id,
+            reason=reason
         )
-        await notify_owner(self.bot, embed=owner_embed)
 
         await safe_delete(ctx.message)
 
@@ -407,8 +595,9 @@ class ModerationCog(commands.Cog):
                 )
             pages.append(Page(embed=embed))
 
-        view = PaginationView(pages=pages, author_id=ctx.author.id)
-        await ctx.send(embed=pages[0].embed, view=view)
+        # Create view with pagination and edit reason button
+        edit_view = WarningsWithEditView(pages=pages, warnings=rows, member=member, author_id=ctx.author.id)
+        await ctx.send(embed=pages[0].embed, view=edit_view)
 
     @commands.command(name="modlogs")
     @commands.guild_only()
@@ -506,12 +695,19 @@ class ModerationCog(commands.Cog):
         # Track mod stat
         await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="mutes")
 
-        owner_embed = make_embed(
+        # Notify owner of the action
+        await notify_owner_action(
+            self.bot,
             action="mute",
-            title="Staff Action: mute",
-            description=f"Guild: **{ctx.guild.name}** (`{ctx.guild.id}`)\nUser: {member} (`{member.id}`)\nModerator: {ctx.author} (`{ctx.author.id}`)\nDuration: {humanize_seconds(seconds)}\nReason: {reason}",
+            guild_name=ctx.guild.name,
+            guild_id=ctx.guild.id,
+            target=str(member),
+            target_id=member.id,
+            moderator=str(ctx.author),
+            moderator_id=ctx.author.id,
+            reason=reason,
+            duration=humanize_seconds(seconds)
         )
-        await notify_owner(self.bot, embed=owner_embed)
 
         await safe_delete(ctx.message)
 
@@ -601,6 +797,19 @@ class ModerationCog(commands.Cog):
         # Track mod stat
         await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="kicks")
 
+        # Notify owner of the action
+        await notify_owner_action(
+            self.bot,
+            action="kick",
+            guild_name=ctx.guild.name,
+            guild_id=ctx.guild.id,
+            target=str(member),
+            target_id=member.id,
+            moderator=str(ctx.author),
+            moderator_id=ctx.author.id,
+            reason=reason
+        )
+
         await safe_delete(ctx.message)
 
     @commands.command(name="ban")
@@ -652,6 +861,19 @@ class ModerationCog(commands.Cog):
 
         # Track mod stat
         await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="bans")
+
+        # Notify owner of the action
+        await notify_owner_action(
+            self.bot,
+            action="ban",
+            guild_name=ctx.guild.name,
+            guild_id=ctx.guild.id,
+            target=str(member),
+            target_id=member.id,
+            moderator=str(ctx.author),
+            moderator_id=ctx.author.id,
+            reason=reason
+        )
 
         await safe_delete(ctx.message)
 
