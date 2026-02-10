@@ -404,14 +404,6 @@ class Database:
         ts = utcnow()
         expires = ts + timedelta(days=warn_days)
         
-        # Get next warn number for this specific user
-        async with self.conn.execute(
-            "SELECT COUNT(*) as count FROM warnings WHERE guild_id = ? AND user_id = ? AND is_active = 1",
-            (guild_id, user_id)
-        ) as cur:
-            row = await cur.fetchone()
-            next_warn_num = (row["count"] + 1) if row else 1
-        
         cur = await self.conn.execute(
             """
             INSERT INTO warnings (user_id, guild_id, moderator_id, reason, timestamp, expires_at, is_active)

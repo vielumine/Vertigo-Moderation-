@@ -15,6 +15,7 @@ import config
 from database import AITarget, BotBlacklist, Database, TimeoutSettings
 from helpers import (
     add_loading_reaction,
+    discord_timestamp,
     extract_id,
     log_to_modlog_channel,
     make_embed,
@@ -444,11 +445,11 @@ class AIModerationCog(commands.Cog):
             for i, entry in enumerate(blacklist_entries[:10]):
                 user = self.bot.get_user(entry.user_id)
                 username = user.mention if user else f"Unknown User ({entry.user_id})"
-                timestamp = datetime.fromisoformat(entry.timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                timestamp_str = discord_timestamp(entry.timestamp, "f")
                 
                 embed.add_field(
                     name=f"Entry {i+1}",
-                    value=f"**User:** {username}\n**Reason:** {entry.reason}\n**Date:** {timestamp}",
+                    value=f"**User:** {username}\n**Reason:** {entry.reason}\n**Date:** {timestamp_str}",
                     inline=False
                 )
             

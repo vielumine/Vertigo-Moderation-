@@ -18,6 +18,7 @@ from helpers import (
     can_bot_act_on,
     can_moderator_act_on,
     commands_channel_check,
+    discord_timestamp,
     extract_id,
     humanize_seconds,
     log_to_modlog_channel,
@@ -275,6 +276,10 @@ class ModerationCog(commands.Cog):
         )
         await safe_dm(member, embed=dm_embed)
 
+        # Get current active warn count for this user to determine the display number
+        active_warnings = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)  # type: ignore[union-attr]
+        warn_number = len(active_warnings) + 1
+
         warn_id = await self.db.add_warning(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
             user_id=member.id,
@@ -283,12 +288,16 @@ class ModerationCog(commands.Cog):
             warn_days=settings.warn_duration,
         )
 
+        # Calculate expiry time for Discord timestamp
+        from datetime import timedelta
+        expires_at = discord.utils.utcnow() + timedelta(days=settings.warn_duration)
+        
         embed = make_embed(
             action="warn",
             title="⚠️ User Warned",
-            description=f"👤 {member.mention} has been warned.\n\n📝 **Reason:** {reason}\n📍 **Warn ID:** `{warn_id}`",
+            description=f"👤 {member.mention} has been warned.\n\n📝 **Reason:** {reason}\n📍 **Warn #{warn_number}** (DB: `{warn_id}`)",
         )
-        embed.add_field(name="⏱️ Expires", value=f"In {settings.warn_duration} days", inline=True)
+        embed.add_field(name="⏱️ Expires", value=discord.utils.format_dt(expires_at, 'R'), inline=True)
         embed.add_field(name="👮 Moderator", value=ctx.author.mention, inline=True)
         embed, file = attach_gif(embed, gif_key="WARN")
 
@@ -389,9 +398,11 @@ class ModerationCog(commands.Cog):
             embed = make_embed(action="warnings", title=f"⚠️ Active Warnings - {member}")
             for idx, row in enumerate(chunk, start=i + 1):
                 mod = f"<@{row['moderator_id']}>" if row["moderator_id"] else "Unknown"
+                timestamp_str = discord_timestamp(row['timestamp'], 'f')
+                expires_str = discord_timestamp(row['expires_at'], 'R')
                 embed.add_field(
-                    name=f"📍 ID #{idx}",
-                    value=f"📝 **Reason:** {row['reason']}\n👮 **Moderator:** {mod}\n🕒 **Date:** {row['timestamp']}",
+                    name=f"📍 Warn #{idx}",
+                    value=f"📝 **Reason:** {row['reason']}\n👮 **Moderator:** {mod}\n🕒 **Date:** {timestamp_str}\n⏱️ **Expires:** {expires_str}",
                     inline=False,
                 )
             pages.append(Page(embed=embed))
@@ -420,8 +431,9 @@ class ModerationCog(commands.Cog):
             for row in chunk:
                 mod = f"<@{row['moderator_id']}>" if row["moderator_id"] else "Unknown"
                 reason = row["reason"] or "(no reason)"
+                timestamp_str = discord_timestamp(row['timestamp'], 'f')
                 embed.add_field(
-                    name=f"{row['action_type']} | {row['timestamp']}",
+                    name=f"{row['action_type']} | {timestamp_str}",
                     value=f"👮 Moderator: {mod}\n📝 Reason: {reason}",
                     inline=False,
                 )
@@ -709,6 +721,10 @@ class ModerationCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
+        # Get current active warn count for this user to determine the display number
+        active_warnings = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)  # type: ignore[union-attr]
+        warn_number = len(active_warnings) + 1
+
         warn_id = await self.db.add_warning(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
             user_id=member.id,
@@ -729,7 +745,7 @@ class ModerationCog(commands.Cog):
             title="⚠️🔇 Warned & Muted",
             description=(
                 f"👤 {member.mention} has been warned and muted.\n\n"
-                f"📍 **Warn ID:** `{warn_id}`\n"
+                f"📍 **Warn #{warn_number}** (DB: `{warn_id}`)\n"
                 f"⏱️ **Mute Duration:** {humanize_seconds(seconds)}\n"
                 f"📝 **Reason:** {reason}"
             ),

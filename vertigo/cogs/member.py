@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 
 from database import Database
-from helpers import commands_channel_check, make_embed
+from helpers import commands_channel_check, discord_timestamp, make_embed
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,9 @@ class MemberCog(commands.Cog):
             return
 
         embed = make_embed(action="mywarns", title="⚠️ Your Active Warnings")
-        for row in rows[:10]:
-            embed.add_field(name=f"📍 ID {row['id']}", value=f"📝 Reason: {row['reason']}\n⏱️ Expires: {row['expires_at']}", inline=False)
+        for idx, row in enumerate(rows[:10], start=1):
+            expires_str = discord_timestamp(row['expires_at'], 'R')
+            embed.add_field(name=f"📍 Warn #{idx}", value=f"📝 Reason: {row['reason']}\n⏱️ Expires: {expires_str}", inline=False)
 
         await ctx.send(embed=embed)
 

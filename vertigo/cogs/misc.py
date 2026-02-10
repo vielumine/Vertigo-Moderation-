@@ -14,6 +14,7 @@ from database import Database
 from helpers import (
     add_loading_reaction,
     commands_channel_check,
+    discord_timestamp,
     log_to_modlog_channel,
     make_embed,
     require_level,
@@ -244,7 +245,7 @@ class MiscCog(commands.Cog):
         embed = make_embed(action="wasbanned", title="📍 Ban History", description=f"👤 **{user}** was banned.")
         embed.add_field(name="📝 Reason", value=row["reason"], inline=False)
         embed.add_field(name="👮 Moderator", value=f"<@{row['moderator_id']}>", inline=True)
-        embed.add_field(name="📅 When", value=row["timestamp"], inline=True)
+        embed.add_field(name="📅 When", value=discord_timestamp(row["timestamp"], "f"), inline=True)
         await ctx.send(embed=embed)
 
     @commands.command(name="checkdur")
@@ -325,6 +326,10 @@ class MiscCog(commands.Cog):
             from helpers import parse_duration
             duration_seconds = parse_duration(duration)
             
+            # Get current active warn count for this user to determine the display number
+            active_warnings = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)
+            warn_number = len(active_warnings) + 1
+            
             # Add warning
             warn_id = await self.db.add_warning(
                 guild_id=ctx.guild.id,
@@ -359,7 +364,7 @@ class MiscCog(commands.Cog):
             
             embed.add_field(
                 name="⚠️ Warning",
-                value=f"**Warning ID:** {warn_id}\n**Mute ID:** {mute_id}",
+                value=f"**Warn #{warn_number}** (DB: `{warn_id}`)\n**Mute ID:** `{mute_id}`",
                 inline=True
             )
             

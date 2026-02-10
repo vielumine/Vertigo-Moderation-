@@ -16,6 +16,7 @@ from helpers import (
     add_loading_reaction,
     attach_gif,
     commands_channel_check,
+    discord_timestamp,
     log_to_modlog_channel,
     make_embed,
     notify_owner,
@@ -345,7 +346,8 @@ class AdminCog(commands.Cog):
             return
         embed = make_embed(action="wasstaff", title="👮 Staff History", description=f"Recent actions by 👤 **{user}**:")
         for row in rows:
-            embed.add_field(name=row["action_type"], value=row["timestamp"], inline=False)
+            timestamp_str = discord_timestamp(row["timestamp"], "f")
+            embed.add_field(name=row["action_type"], value=timestamp_str, inline=False)
         await ctx.send(embed=embed)
 
 
