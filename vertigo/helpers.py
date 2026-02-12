@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 
+import aiosqlite
 import discord
 from huggingface_hub import InferenceClient
 from discord.ext import commands
@@ -178,6 +179,39 @@ async def is_trial_mod(member: discord.Member, db) -> bool:
     """Check if member is a trial moderator."""
     trial_roles = await db.get_trial_mod_roles(member.guild.id)
     return any(r.id in trial_roles for r in member.roles)
+
+
+def get_user_type(member: discord.Member, settings: GuildSettings) -> str:
+    """Return human-readable user type/position.
+    
+    Hierarchy: Member < Moderator < Senior Mod < Head Mod < Admin < Owner
+    """
+    if is_owner(member.id):
+        return "Bot Owner"
+    if is_admin_member(member, settings):
+        return "Administrator"
+    if has_any_role(member, settings.head_mod_role_ids):
+        return "Head Moderator"
+    if has_any_role(member, settings.senior_mod_role_ids):
+        return "Senior Moderator"
+    if has_any_role(member, settings.moderator_role_ids) or has_any_role(member, settings.staff_role_ids):
+        return "Moderator"
+    return "Member"
+
+
+def get_trial_mod_status(member: discord.Member, trial_mod_role_ids: Sequence[int]) -> str | None:
+    """Return trial mod status if applicable."""
+    if has_any_role(member, trial_mod_role_ids):
+        return "Trial Moderator"
+    return None
+
+
+def calculate_danger_level(flags: list[aiosqlite.Row]) -> int:
+    """Calculate danger level from active staff flags.
+    
+    Each flag contributes 1 danger point (strike).
+    """
+    return len(flags)
 
 
 def is_owner(user_id: int) -> bool:

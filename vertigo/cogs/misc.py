@@ -198,6 +198,72 @@ class MiscCog(commands.Cog):
         embed.description = "\n".join(enabled) if enabled else "No enabled permissions."
         await ctx.send(embed=embed)
 
+    @commands.command(name="roleinfo")
+    @commands.guild_only()
+    @commands_channel_check()
+    @require_level("moderator")
+    async def roleinfo(self, ctx: commands.Context, role: discord.Role) -> None:
+        """Show detailed information about a role.
+
+        Usage: !roleinfo <role>
+        Shows: Creation date, color, permissions summary.
+        """
+        embed = make_embed(action="roleinfo", title=f"📋 Role Information - {role.name}")
+        embed.set_thumbnail(url=role.display_icon.url if role.display_icon else ctx.guild.icon.url if ctx.guild.icon else None)
+
+        # Basic info
+        embed.add_field(name="📍 Role ID", value=str(role.id), inline=True)
+        embed.add_field(name="👥 Members", value=str(len(role.members)), inline=True)
+        embed.add_field(name="📊 Position", value=str(role.position), inline=True)
+
+        # Creation date using Unix timestamp
+        embed.add_field(
+            name="📅 Created",
+            value=discord_timestamp(role.created_at, "f") + f"\n({discord_timestamp(role.created_at, 'R')})",
+            inline=False
+        )
+
+        # Color
+        color_hex = f"#{role.color.value:06X}"
+        color_preview = "⬜ Default" if role.color.value == 0 else f"🎨 {color_hex}"
+        embed.add_field(name="🎨 Color", value=color_preview, inline=True)
+
+        # Permissions
+        if role.permissions.administrator:
+            embed.add_field(name="🔐 Permissions", value="**Administrator Role** (All permissions)", inline=False)
+        else:
+            # Get key permissions
+            key_perms = []
+            perm_map = {
+                "manage_guild": "Manage Server",
+                "manage_channels": "Manage Channels",
+                "manage_roles": "Manage Roles",
+                "manage_messages": "Manage Messages",
+                "kick_members": "Kick Members",
+                "ban_members": "Ban Members",
+                "mention_everyone": "Mention @everyone",
+                "view_audit_log": "View Audit Log",
+                "moderate_members": "Timeout Members",
+            }
+
+            for perm_name, display_name in perm_map.items():
+                if getattr(role.permissions, perm_name, False):
+                    key_perms.append(display_name)
+
+            if key_perms:
+                perms_text = ", ".join(key_perms[:6])
+                if len(key_perms) > 6:
+                    perms_text += f" (+{len(key_perms) - 6} more)"
+                embed.add_field(name="🔐 Key Permissions", value=perms_text, inline=False)
+            else:
+                embed.add_field(name="🔐 Permissions", value="No key permissions enabled", inline=False)
+
+        # Hoisted and mentionable
+        embed.add_field(name="📌 Hoisted", value="Yes" if role.hoist else "No", inline=True)
+        embed.add_field(name="🔔 Mentionable", value="Yes" if role.mentionable else "No", inline=True)
+
+        await ctx.send(embed=embed)
+
     @commands.command(name="changenick")
     @commands.guild_only()
     @commands_channel_check()
@@ -483,8 +549,11 @@ class MiscCog(commands.Cog):
                 title="Help - Misc",
                 description=(
                     f"`{prefix}userinfo <user>`\n"
+                    f"`{prefix}checkinfo <user>` - Check user's type, dates, warnings, mod stats\n"
                     f"`{prefix}serverinfo`\n"
                     f"`{prefix}botinfo`\n"
+                    f"`{prefix}roleinfo <role>` - Role creation date, color, permissions\n"
+                    f"`{prefix}roleperms <role>`\n"
                     f"`{prefix}checkavatar <user>`\n"
                     f"`{prefix}checkbanner <user>`\n"
                     f"`{prefix}members`\n"
@@ -492,8 +561,7 @@ class MiscCog(commands.Cog):
                     f"`{prefix}wasbanned <user>`\n"
                     f"`{prefix}checkdur <user>`\n"
                     f"`{prefix}changenick <user> <nickname>`\n"
-                    f"`{prefix}removenick <user>`\n"
-                    f"`{prefix}roleperms <role>`"
+                    f"`{prefix}removenick <user>`"
                 ),
             ),
             "cleaning": make_embed(
@@ -513,7 +581,8 @@ class MiscCog(commands.Cog):
                     f"`{prefix}mywarns`\n"
                     f"`{prefix}myavatar`\n"
                     f"`{prefix}mybanner`\n"
-                    f"`{prefix}myinfo`\n"
+                    f"`{prefix}myinfo` - Your user type, trial status, join date, account age, warnings\n"
+                    f"`{prefix}myflags` - Staff only: view your flags and danger level\n"
                     f"`{prefix}translate <text> [target_language]`"
                 ),
             ),
@@ -536,6 +605,7 @@ class MiscCog(commands.Cog):
                 f"**Staff Flagging ({config.MAX_STAFF_FLAGS}-Strike System)**\n"
                 f"`{prefix}flag <staff_user> <reason>` - Flag a staff member\n"
                 f"`{prefix}unflag <staff_user> <strike_id>` - Remove a flag\n"
+                f"`{prefix}checkflags <staff_member>` - Check a staff member's flags\n"
                 f"`{prefix}stafflist` - View all staff with strike counts\n"
                 f"⚠️ **{config.MAX_STAFF_FLAGS} flags = auto-termination**\n"
                 f"📅 Flags expire after {settings.flag_duration} days\n\n"
