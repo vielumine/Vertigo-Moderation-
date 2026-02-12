@@ -176,6 +176,7 @@ COGS: Sequence[str] = (
     "cogs.misc",
     "cogs.owner",
     "cogs.owner_commands",
+    "cogs.bot_management",
     "cogs.stats",
     "cogs.ai",
     "cogs.ai_moderation",

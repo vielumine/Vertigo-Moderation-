@@ -142,6 +142,21 @@ EMBED_COLORS: dict[str, int] = {
     "promote": EMBED_COLOR_GRAY,
     "demote": EMBED_COLOR_GRAY,
 
+    # Bot Management Commands (Gray)
+    "botavatar": EMBED_COLOR_GRAY,
+    "botbanner": EMBED_COLOR_GRAY,
+    "botname": EMBED_COLOR_GRAY,
+    "botstatus": EMBED_COLOR_GRAY,
+    "botactivity": EMBED_COLOR_GRAY,
+    "botinfo": EMBED_COLOR_GRAY,
+    "botreset": EMBED_COLOR_GRAY,
+    "waketime": EMBED_COLOR_GRAY,
+    "banguild": EMBED_COLOR_RED,
+    "unbanguild": EMBED_COLOR_GRAY,
+    "checkguild": EMBED_COLOR_GRAY,
+    "guildlist": EMBED_COLOR_GRAY,
+    "dmuser": EMBED_COLOR_GRAY,
+
     # Error messages
     "error": EMBED_COLOR_ERROR,
     "success": EMBED_COLOR_SUCCESS,
