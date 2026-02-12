@@ -219,6 +219,90 @@ def is_owner(user_id: int) -> bool:
     return user_id == config.OWNER_ID if config.OWNER_ID else False
 
 
+def can_override_staff_immunity(executor: discord.Member, target: discord.Member, settings: GuildSettings) -> bool:
+    """Check if the executor can override staff immunity restrictions.
+    
+    The bot owner can always override staff immunity.
+    Regular admins cannot override - they must use normal staff immunity rules.
+    """
+    # Owner can always override
+    if is_owner(executor.id):
+        return True
+    return False
+
+
+def check_staff_immunity_with_override(
+    executor: discord.Member,
+    target: discord.Member,
+    settings: GuildSettings,
+    trial_mod_role_ids: Sequence[int],
+) -> tuple[bool, bool]:
+    """Check if action is blocked by staff immunity, considering owner override.
+    
+    Returns:
+        tuple: (is_blocked, is_owner_override)
+        - is_blocked: True if action should be blocked
+        - is_owner_override: True if owner is bypassing normal restrictions
+    """
+    # Check if target is staff
+    staff_ids = set(
+        settings.staff_role_ids
+        + settings.head_mod_role_ids
+        + settings.senior_mod_role_ids
+        + settings.moderator_role_ids
+        + list(trial_mod_role_ids)
+    )
+    is_target_staff = any(r.id in staff_ids for r in target.roles)
+    is_target_admin = target.guild_permissions.administrator
+    
+    # If target is not staff and not admin, no immunity check needed
+    if not is_target_staff and not is_target_admin:
+        return (False, False)
+    
+    # Check if executor is owner
+    if is_owner(executor.id):
+        return (False, True)  # Not blocked, but is an owner override
+    
+    # Check if executor is admin (normal admin, not owner)
+    is_executor_admin = (
+        executor.guild_permissions.administrator
+        or any(r.id in settings.admin_role_ids for r in executor.roles)
+    )
+    
+    # Admins can moderate staff (but this is NOT an override, it's normal behavior)
+    if is_executor_admin:
+        return (False, False)
+    
+    # Non-admin staff cannot moderate other staff
+    return (True, False)
+
+
+async def log_owner_override(
+    bot: commands.Bot,
+    db,
+    *,
+    guild_id: int,
+    action_type: str,
+    target_user_id: int | None,
+    moderator_id: int,
+    executor_id: int,
+    reason: str | None = None,
+) -> None:
+    """Log an owner override action to the database."""
+    try:
+        await db.add_permission_override(
+            guild_id=guild_id,
+            action_type=action_type,
+            target_user_id=target_user_id,
+            moderator_id=moderator_id,
+            executor_id=executor_id,
+            reason=reason,
+            override_type="owner_bypass",
+        )
+    except Exception:
+        logger.exception("Failed to log owner override")
+
+
 async def safe_delete(message: discord.Message) -> None:
     try:
         await message.delete()

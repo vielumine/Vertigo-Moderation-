@@ -157,6 +157,12 @@ EMBED_COLORS: dict[str, int] = {
     "guildlist": EMBED_COLOR_GRAY,
     "dmuser": EMBED_COLOR_GRAY,
 
+    # Owner Override Commands (Gray - info/audit commands)
+    "overrideaudit": EMBED_COLOR_GRAY,
+    "overridestats": EMBED_COLOR_GRAY,
+    "overrideguilds": EMBED_COLOR_GRAY,
+    "permreport": EMBED_COLOR_GRAY,
+
     # Error messages
     "error": EMBED_COLOR_ERROR,
     "success": EMBED_COLOR_SUCCESS,
