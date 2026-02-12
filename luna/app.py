@@ -167,6 +167,8 @@ COGS: Sequence[str] = (
     "cogs.helpers",  # Tags system
     "cogs.utility",  # New utility commands
     "cogs.shifts",   # Shift management
+    "cogs.notifications",  # DM notification management
+    "cogs.promotions",     # Staff promotion suggestions
 )
 
 

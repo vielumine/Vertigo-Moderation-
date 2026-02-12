@@ -182,7 +182,10 @@ def make_embed(*, action: str, title: str, description: str | None = None) -> di
     return embed
 
 
-# Luna doesn't use GIFs - removed attach_gif function
+# Luna doesn't use GIFs - stub function for compatibility
+def attach_gif(embed: discord.Embed, *, gif_key: str) -> tuple[discord.Embed, None]:
+    """Stub function for GIF attachment (Luna doesn't use GIFs)."""
+    return embed, None
 
 
 async def send_embed(
