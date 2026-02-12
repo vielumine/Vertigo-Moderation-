@@ -117,34 +117,6 @@ class UtilityCog(commands.Cog):
             )
             await ctx.send(embed=embed)
     
-    @commands.command(name="translate")
-    @commands.guild_only()
-    async def translate(self, ctx: commands.Context, target_language: str, *, text: str) -> None:
-        """Translate text to another language using AI.
-        
-        Usage:
-        ,translate spanish Hello, how are you?
-        """
-        try:
-            prompt = f"Translate this to {target_language}: '{text}'. Provide only the translation, no explanation."
-            translation = await get_ai_response(prompt, "professional")
-            
-            embed = make_embed(
-                action="translate",
-                title=f"🌐 Translation to {target_language.title()}",
-                description=f"**Original:** {text}\n\n**Translation:** {translation}"
-            )
-            await ctx.send(embed=embed)
-            
-        except Exception as e:
-            logger.error(f"Translate error: {e}")
-            embed = make_embed(
-                action="error",
-                title="❌ Error",
-                description="Failed to translate text."
-            )
-            await ctx.send(embed=embed)
-    
     @commands.command(name="askai")
     @commands.guild_only()
     async def askai(self, ctx: commands.Context, *, question: str) -> None:
