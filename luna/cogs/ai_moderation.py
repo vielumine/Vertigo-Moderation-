@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import discord
@@ -14,10 +15,15 @@ from discord.ext import commands
 import config
 from database import AITarget, BotBlacklist, Database, TimeoutSettings
 from helpers import (
+    Page,
+    PaginationView,
     add_loading_reaction,
     extract_id,
+    humanize_seconds,
     log_to_modlog_channel,
     make_embed,
+    notify_owner,
+    parse_duration,
     require_admin,
     require_owner,
     safe_dm,
@@ -28,6 +34,27 @@ if TYPE_CHECKING:
     from main import VertigoBot
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_channel_from_arg(guild: discord.Guild, channel_arg: str) -> discord.TextChannel | None:
+    """Parse a channel argument and return the channel if valid."""
+    if not channel_arg:
+        return None
+    
+    # Try to extract ID from mention or plain ID
+    channel_id = extract_id(channel_arg)
+    if channel_id:
+        channel = guild.get_channel(channel_id)
+        if channel and isinstance(channel, discord.TextChannel):
+            return channel
+    
+    # Try to find by name
+    channel_name = channel_arg.lstrip('#')
+    for channel in guild.text_channels:
+        if channel.name.lower() == channel_name.lower():
+            return channel
+    
+    return None
 
 
 class AIModerationCog(commands.Cog):
@@ -46,11 +73,13 @@ class AIModerationCog(commands.Cog):
     
     @commands.command(name="aiwarn")
     @require_owner()
-    async def aiwarn(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
-        """AI warns a user instead of a moderator."""
+    async def aiwarn(self, ctx: commands.Context, member: discord.Member, channel: discord.TextChannel = None, *, reason: str) -> None:
+        """AI warns a user instead of a moderator. Optionally specify a channel."""
         await add_loading_reaction(ctx.message)
         
         try:
+            target_channel = channel if channel else ctx.channel
+            
             # Add warning
             await self.db.add_warning(
                 guild_id=ctx.guild.id,
@@ -61,10 +90,14 @@ class AIModerationCog(commands.Cog):
             )
             
             # Create embed
+            description = f"**User:** {member.mention}\n**Reason:** {reason}\n**Moderator:** Vertigo AI Moderation"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
             embed = make_embed(
                 action="warn",
                 title="⚠️ User Warned",
-                description=f"**User:** {member.mention}\n**Reason:** {reason}\n**Moderator:** Vertigo AI Moderation"
+                description=description
             )
             
             # Add to modlogs
@@ -92,15 +125,152 @@ class AIModerationCog(commands.Cog):
             )
             await ctx.send(embed=embed)
     
+    @commands.command(name="aidelwarn")
+    @require_owner()
+    async def aidelwarn(self, ctx: commands.Context, member: discord.Member, warn_id: int, channel: discord.TextChannel = None) -> None:
+        """AI removes a warning from a user."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            rows = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)
+            if not rows:
+                embed = make_embed(action="error", title="❌ No Warnings", description=f"{member.mention} has no active warnings.")
+                await ctx.send(embed=embed)
+                return
+            
+            if warn_id < 1 or warn_id > len(rows):
+                embed = make_embed(action="error", title="❌ Invalid ID", description=f"Please provide a valid warning ID (1-{len(rows)}).")
+                await ctx.send(embed=embed)
+                return
+            
+            # Get the actual database ID
+            actual_id = rows[warn_id - 1]["id"]
+            
+            await self.db.deactivate_warning(warn_id=actual_id, guild_id=ctx.guild.id)
+            
+            description = f"📍 Removed warning `#{warn_id}` for 👤 {member.mention}."
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
+            embed = make_embed(
+                action="delwarn",
+                title="🗑️ Warning Removed",
+                description=description
+            )
+            
+            # Add to modlogs
+            await self.db.add_modlog(
+                guild_id=ctx.guild.id,
+                action_type="ai_unwarn",
+                user_id=member.id,
+                moderator_id=ctx.bot.user.id,
+                reason=f"Removed warning #{warn_id} (DB ID: {actual_id})",
+                message_id=ctx.message.id
+            )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error("AI delwarn error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to remove warning."
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="aiwarnings")
+    @require_owner()
+    async def aiwarnings(self, ctx: commands.Context, member: discord.Member, channel: discord.TextChannel = None) -> None:
+        """AI shows warnings for a user."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            rows = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)
+            if not rows:
+                embed = make_embed(action="warnings", title="⚠️ Warnings", description=f"No active warnings for 👤 {member.mention}.")
+                await ctx.send(embed=embed)
+                return
+            
+            pages: list[Page] = []
+            chunk_size = 5
+            for i in range(0, len(rows), chunk_size):
+                chunk = rows[i:i + chunk_size]
+                embed = make_embed(action="warnings", title=f"⚠️ Active Warnings - {member} (AI)")
+                for idx, row in enumerate(chunk, start=i + 1):
+                    mod = f"<@{row['moderator_id']}>" if row['moderator_id'] else "Unknown"
+                    embed.add_field(
+                        name=f"📍 ID #{idx}",
+                        value=f"📝 **Reason:** {row['reason']}\n👮 **Moderator:** {mod}\n🕒 **Date:** {row['timestamp']}",
+                        inline=False,
+                    )
+                pages.append(Page(embed=embed))
+            
+            view = PaginationView(pages=pages, author_id=ctx.author.id)
+            await ctx.send(embed=pages[0].embed, view=view)
+            
+        except Exception as e:
+            logger.error("AI warnings error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to fetch warnings."
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="aimodlogs")
+    @require_owner()
+    async def aimodlogs(self, ctx: commands.Context, member: discord.Member, channel: discord.TextChannel = None) -> None:
+        """AI shows modlogs for a user."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            rows = await self.db.get_modlogs_for_user(ctx.guild.id, member.id, limit=100)
+            if not rows:
+                embed = make_embed(action="modlogs", title="📋 Modlogs", description=f"No modlogs for 👤 {member.mention}.")
+                await ctx.send(embed=embed)
+                return
+            
+            pages: list[Page] = []
+            chunk_size = 10
+            for i in range(0, len(rows), chunk_size):
+                chunk = rows[i:i + chunk_size]
+                embed = make_embed(action="modlogs", title=f"📋 Modlogs - {member} (AI)")
+                for row in chunk:
+                    mod = f"<@{row['moderator_id']}>" if row['moderator_id'] else "Unknown"
+                    reason = row["reason"] or "(no reason)"
+                    embed.add_field(
+                        name=f"{row['action_type']} | {row['timestamp']}",
+                        value=f"👮 Moderator: {mod}\n📝 Reason: {reason}",
+                        inline=False,
+                    )
+                pages.append(Page(embed=embed))
+            
+            view = PaginationView(pages=pages, author_id=ctx.author.id)
+            await ctx.send(embed=pages[0].embed, view=view)
+            
+        except Exception as e:
+            logger.error("AI modlogs error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to fetch modlogs."
+            )
+            await ctx.send(embed=embed)
+    
     @commands.command(name="aimute")
     @require_owner()
-    async def aimute(self, ctx: commands.Context, member: discord.Member, duration: str, *, reason: str) -> None:
+    async def aimute(self, ctx: commands.Context, member: discord.Member, duration: str, channel: discord.TextChannel = None, *, reason: str) -> None:
         """AI mutes a user instead of a moderator."""
         await add_loading_reaction(ctx.message)
         
         try:
-            from helpers import parse_duration
             duration_seconds = parse_duration(duration)
+            until = discord.utils.utcnow() + timedelta(seconds=duration_seconds)
             
             # Add mute
             await self.db.add_mute(
@@ -112,10 +282,14 @@ class AIModerationCog(commands.Cog):
             )
             
             # Create embed
+            description = f"**User:** {member.mention}\n**Duration:** {duration}\n**Reason:** {reason}\n**Moderator:** Vertigo AI Moderation"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
             embed = make_embed(
                 action="mute",
                 title="🔇 User Muted",
-                description=f"**User:** {member.mention}\n**Duration:** {duration}\n**Reason:** {reason}\n**Moderator:** Vertigo AI Moderation"
+                description=description
             )
             
             # Add to modlogs
@@ -143,20 +317,68 @@ class AIModerationCog(commands.Cog):
             )
             await ctx.send(embed=embed)
     
+    @commands.command(name="aiunmute")
+    @require_owner()
+    async def aiunmute(self, ctx: commands.Context, member: discord.Member, channel: discord.TextChannel = None, *, reason: str = "No reason provided") -> None:
+        """AI unmutes a user instead of a moderator."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            await member.timeout(None, reason=reason)
+            await self.db.deactivate_active_mutes(guild_id=ctx.guild.id, user_id=member.id)
+            
+            description = f"👤 {member.mention} has been unmuted.\n📝 Reason: {reason}"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
+            embed = make_embed(
+                action="unmute",
+                title="🔊 User Unmuted",
+                description=description
+            )
+            
+            # Add to modlogs
+            await self.db.add_modlog(
+                guild_id=ctx.guild.id,
+                action_type="ai_unmute",
+                user_id=member.id,
+                moderator_id=ctx.bot.user.id,
+                reason=reason,
+                message_id=ctx.message.id
+            )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error("AI unmute error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to unmute user."
+            )
+            await ctx.send(embed=embed)
+    
     @commands.command(name="aikick")
     @require_owner()
-    async def aikick(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
+    async def aikick(self, ctx: commands.Context, member: discord.Member, channel: discord.TextChannel = None, *, reason: str) -> None:
         """AI kicks a user instead of a moderator."""
         await add_loading_reaction(ctx.message)
         
         try:
             await member.kick(reason=f"AI Kick: {reason}")
             
-            # Create embed
+            description = f"**User:** {member.mention}\n**Reason:** {reason}\n**Moderator:** Vertigo AI Moderation"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
             embed = make_embed(
                 action="kick",
                 title="👢 User Kicked",
-                description=f"**User:** {member.mention}\n**Reason:** {reason}\n**Moderator:** Vertigo AI Moderation"
+                description=description
             )
             
             # Add to modlogs
@@ -186,7 +408,7 @@ class AIModerationCog(commands.Cog):
     
     @commands.command(name="aiban")
     @require_owner()
-    async def aiban(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
+    async def aiban(self, ctx: commands.Context, member: discord.Member, channel: discord.TextChannel = None, *, reason: str) -> None:
         """AI bans a user instead of a moderator."""
         await add_loading_reaction(ctx.message)
         
@@ -201,11 +423,14 @@ class AIModerationCog(commands.Cog):
                 reason=reason
             )
             
-            # Create embed
+            description = f"**User:** {member.mention}\n**Reason:** {reason}\n**Moderator:** Vertigo AI Moderation"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
             embed = make_embed(
                 action="ban",
                 title="🔨 User Banned",
-                description=f"**User:** {member.mention}\n**Reason:** {reason}\n**Moderator:** Vertigo AI Moderation"
+                description=description
             )
             
             # Add to modlogs
@@ -230,6 +455,423 @@ class AIModerationCog(commands.Cog):
                 action="error",
                 title="Error",
                 description="Failed to ban user."
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="aiunban")
+    @require_owner()
+    async def aiunban(self, ctx: commands.Context, user: discord.User, channel: discord.TextChannel = None, *, reason: str = "No reason provided") -> None:
+        """AI unbans a user instead of a moderator."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            await ctx.guild.unban(user, reason=reason)
+            
+            description = f"Unbanned 👤 **{user}**.\n📝 Reason: {reason}"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
+            embed = make_embed(
+                action="unban",
+                title="✅ User Unbanned",
+                description=description
+            )
+            
+            # Add to modlogs
+            await self.db.add_modlog(
+                guild_id=ctx.guild.id,
+                action_type="ai_unban",
+                user_id=user.id,
+                moderator_id=ctx.bot.user.id,
+                reason=reason,
+                message_id=ctx.message.id
+            )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error("AI unban error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to unban user."
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="aiwm")
+    @require_owner()
+    async def aiwm(self, ctx: commands.Context, member: discord.Member, duration: str, channel: discord.TextChannel = None, *, reason: str) -> None:
+        """AI warns and mutes a user in a single command."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            duration_seconds = parse_duration(duration)
+            until = discord.utils.utcnow() + timedelta(seconds=duration_seconds)
+            
+            # Add warning
+            warn_id = await self.db.add_warning(
+                guild_id=ctx.guild.id,
+                user_id=member.id,
+                moderator_id=ctx.bot.user.id,
+                reason=reason,
+                warn_days=14
+            )
+            
+            # Add mute
+            await self.db.add_mute(
+                guild_id=ctx.guild.id,
+                user_id=member.id,
+                moderator_id=ctx.bot.user.id,
+                reason=reason,
+                duration_seconds=duration_seconds
+            )
+            
+            description = (
+                f"👤 {member.mention} has been warned and muted.\n\n"
+                f"📍 **Warn ID:** `{warn_id}`\n"
+                f"⏱️ **Mute Duration:** {humanize_seconds(duration_seconds)}\n"
+                f"📝 **Reason:** {reason}\n"
+                f"**Moderator:** Vertigo AI Moderation"
+            )
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
+            embed = make_embed(
+                action="wm",
+                title="⚠️🔇 Warned & Muted",
+                description=description
+            )
+            
+            # Add to modlogs
+            await self.db.add_modlog(
+                guild_id=ctx.guild.id,
+                action_type="ai_warn_and_mute",
+                user_id=member.id,
+                moderator_id=ctx.bot.user.id,
+                reason=reason,
+                message_id=ctx.message.id
+            )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error("AI wm error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to warn and mute user."
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="aimasskick")
+    @require_owner()
+    async def aimasskick(self, ctx: commands.Context, users: str, channel: discord.TextChannel = None, *, reason: str) -> None:
+        """AI kicks multiple users instead of a moderator."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            members = []
+            for part in users.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                member_id = int(part) if part.isdigit() else extract_id(part)
+                if not member_id:
+                    continue
+                m = ctx.guild.get_member(int(member_id))
+                if m:
+                    members.append(m)
+            
+            if not members:
+                embed = make_embed(action="error", title="❌ No Users", description="Provide a comma-separated list of users.")
+                await ctx.send(embed=embed)
+                return
+            
+            ok = 0
+            failed = 0
+            for m in members:
+                try:
+                    await m.kick(reason=f"AI Mass Kick: {reason}")
+                    await self.db.add_modlog(guild_id=ctx.guild.id, action_type="ai_kick", user_id=m.id, moderator_id=ctx.bot.user.id, reason=reason)
+                    ok += 1
+                except Exception:
+                    failed += 1
+            
+            description = f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
+            embed = make_embed(
+                action="kick",
+                title="👢 Mass Kick Results (AI)",
+                description=description
+            )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error("AI masskick error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to mass kick users."
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="aimassban")
+    @require_owner()
+    async def aimassban(self, ctx: commands.Context, users: str, channel: discord.TextChannel = None, *, reason: str) -> None:
+        """AI bans multiple users instead of a moderator."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            members = []
+            for part in users.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                member_id = int(part) if part.isdigit() else extract_id(part)
+                if not member_id:
+                    continue
+                m = ctx.guild.get_member(int(member_id))
+                if m:
+                    members.append(m)
+            
+            if not members:
+                embed = make_embed(action="error", title="❌ No Users", description="Provide a comma-separated list of users.")
+                await ctx.send(embed=embed)
+                return
+            
+            ok = 0
+            failed = 0
+            for m in members:
+                try:
+                    await ctx.guild.ban(m, reason=f"AI Mass Ban: {reason}", delete_message_days=0)
+                    await self.db.add_ban(guild_id=ctx.guild.id, user_id=m.id, moderator_id=ctx.bot.user.id, reason=reason)
+                    await self.db.add_modlog(guild_id=ctx.guild.id, action_type="ai_ban", user_id=m.id, moderator_id=ctx.bot.user.id, reason=reason)
+                    ok += 1
+                except Exception:
+                    failed += 1
+            
+            description = f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
+            embed = make_embed(
+                action="ban",
+                title="🚫 Mass Ban Results (AI)",
+                description=description
+            )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error("AI massban error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to mass ban users."
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="aimassmute")
+    @require_owner()
+    async def aimassmute(self, ctx: commands.Context, users: str, duration: str, channel: discord.TextChannel = None, *, reason: str) -> None:
+        """AI mutes multiple users instead of a moderator."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            members = []
+            for part in users.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                member_id = int(part) if part.isdigit() else extract_id(part)
+                if not member_id:
+                    continue
+                m = ctx.guild.get_member(int(member_id))
+                if m:
+                    members.append(m)
+            
+            if not members:
+                embed = make_embed(action="error", title="❌ No Users", description="Provide a comma-separated list of users.")
+                await ctx.send(embed=embed)
+                return
+            
+            duration_seconds = parse_duration(duration)
+            until = discord.utils.utcnow() + timedelta(seconds=duration_seconds)
+            
+            ok = 0
+            failed = 0
+            for m in members:
+                try:
+                    await m.timeout(until, reason=reason)
+                    await self.db.add_mute(guild_id=ctx.guild.id, user_id=m.id, moderator_id=ctx.bot.user.id, reason=reason, duration_seconds=duration_seconds)
+                    await self.db.add_modlog(guild_id=ctx.guild.id, action_type="ai_mute", user_id=m.id, moderator_id=ctx.bot.user.id, reason=reason)
+                    ok += 1
+                except Exception:
+                    failed += 1
+            
+            description = f"⏱️ Duration: {humanize_seconds(duration_seconds)}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
+            embed = make_embed(
+                action="mute",
+                title="🔇 Mass Mute Results (AI)",
+                description=description
+            )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error("AI massmute error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to mass mute users."
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="aiimprison")
+    @require_owner()
+    async def aiimprison(self, ctx: commands.Context, member: discord.Member, channel: discord.TextChannel = None, *, reason: str) -> None:
+        """AI imprisons a user (removes all roles)."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            stored_role_ids = [r.id for r in member.roles if r != ctx.guild.default_role]
+            await self.db.add_imprisonment(
+                guild_id=ctx.guild.id,
+                user_id=member.id,
+                moderator_id=ctx.bot.user.id,
+                role_ids=stored_role_ids
+            )
+            
+            await member.edit(roles=[], reason=reason)
+            
+            description = f"Removed all roles from {member.mention}.\nReason: {reason}"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
+            embed = make_embed(
+                action="imprison",
+                title="🖐️ User Imprisoned",
+                description=description
+            )
+            
+            # Add to modlogs
+            await self.db.add_modlog(
+                guild_id=ctx.guild.id,
+                action_type="ai_imprison",
+                user_id=member.id,
+                moderator_id=ctx.bot.user.id,
+                reason=reason,
+                message_id=ctx.message.id
+            )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error("AI imprison error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to imprison user."
+            )
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="airelease")
+    @require_owner()
+    async def airelease(self, ctx: commands.Context, member: discord.Member, channel: discord.TextChannel = None, *, reason: str = "No reason provided") -> None:
+        """AI releases a user from imprisonment (restores roles)."""
+        await add_loading_reaction(ctx.message)
+        
+        try:
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            row = await self.db.get_active_imprisonment(guild_id=ctx.guild.id, user_id=member.id)
+            
+            role_ids = []
+            if row is not None:
+                try:
+                    parsed = json.loads(row["roles_json"])
+                    if isinstance(parsed, list):
+                        role_ids = [int(v) for v in parsed if str(v).isdigit()]
+                except Exception:
+                    role_ids = []
+            
+            roles = []
+            for rid in role_ids:
+                role = ctx.guild.get_role(int(rid))
+                if role is not None:
+                    roles.append(role)
+            
+            if not roles and settings.member_role_id:
+                role = ctx.guild.get_role(settings.member_role_id)
+                if role:
+                    roles = [role]
+            
+            await member.edit(roles=roles, reason=reason)
+            
+            if row is not None:
+                await self.db.deactivate_imprisonment(imprison_id=int(row["id"]))
+            
+            description = f"Restored roles for {member.mention}.\nReason: {reason}"
+            if channel:
+                description += f"\n**Channel:** {channel.mention}"
+            
+            embed = make_embed(
+                action="release",
+                title="✅ User Released",
+                description=description
+            )
+            
+            # Add to modlogs
+            await self.db.add_modlog(
+                guild_id=ctx.guild.id,
+                action_type="ai_release",
+                user_id=member.id,
+                moderator_id=ctx.bot.user.id,
+                reason=reason,
+                message_id=ctx.message.id
+            )
+            
+            # Log to modlog channel
+            settings = await self.bot.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
+            await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error("AI release error: %s", e)
+            embed = make_embed(
+                action="error",
+                title="Error",
+                description="Failed to release user."
             )
             await ctx.send(embed=embed)
     
