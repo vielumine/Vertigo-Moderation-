@@ -52,6 +52,20 @@ class _RolesModal(discord.ui.Modal, title="Set Roles"):
         await interaction.response.send_message("Roles updated.", ephemeral=True)
 
 
+class _TrialModRolesModal(discord.ui.Modal, title="Set Trial Mod Roles"):
+    trial_mod_role_ids = discord.ui.TextInput(label="Trial Mod Role IDs (comma-separated)", required=False, max_length=4000)
+
+    def __init__(self, *, db: Database, guild_id: int) -> None:
+        super().__init__()
+        self.db = db
+        self.guild_id = guild_id
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        values = parse_id_list(str(self.trial_mod_role_ids.value))
+        await self.db.set_trial_mod_roles(self.guild_id, values)
+        await interaction.response.send_message("Trial mod roles updated.", ephemeral=True)
+
+
 class _ChannelModal(discord.ui.Modal, title="Set Channel"):
     channel_value = discord.ui.TextInput(label="Channel ID or #mention", required=True, max_length=100)
 
@@ -142,6 +156,10 @@ class SetupView(discord.ui.View):
     async def set_roles(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_RolesModal(db=self.db, guild_id=self.guild_id))
 
+    @discord.ui.button(label="⚙️ Set Trial Mod Roles", style=discord.ButtonStyle.primary)
+    async def set_trial_mod_roles(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
+        await interaction.response.send_modal(_TrialModRolesModal(db=self.db, guild_id=self.guild_id))
+
     @discord.ui.button(label="📜 Set Modlog Channel", style=discord.ButtonStyle.primary)
     async def set_modlog(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         await interaction.response.send_modal(_ChannelModal(db=self.db, guild_id=self.guild_id, field="modlog_channel_id", label="Set Modlog Channel"))
@@ -161,6 +179,7 @@ class SetupView(discord.ui.View):
     @discord.ui.button(label="👁️ See Settings", style=discord.ButtonStyle.secondary)
     async def see_settings(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
         settings = await self.db.get_guild_settings(self.guild_id, default_prefix=config.DEFAULT_PREFIX)
+        trial_mod_roles = await self.db.get_trial_mod_roles(self.guild_id)
         embed = make_embed(action="setup", title="Current Settings")
         embed.add_field(name="Prefix", value=settings.prefix, inline=True)
         embed.add_field(name="Warn Duration", value=f"{settings.warn_duration} days", inline=True)
@@ -171,6 +190,7 @@ class SetupView(discord.ui.View):
         embed.add_field(name="Head Mod Role IDs", value=", ".join(map(str, settings.head_mod_role_ids)) or "None", inline=False)
         embed.add_field(name="Senior Mod Role IDs", value=", ".join(map(str, settings.senior_mod_role_ids)) or "None", inline=False)
         embed.add_field(name="Moderator Role IDs", value=", ".join(map(str, settings.moderator_role_ids)) or "None", inline=False)
+        embed.add_field(name="Trial Mod Role IDs", value=", ".join(map(str, trial_mod_roles)) or "None", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
