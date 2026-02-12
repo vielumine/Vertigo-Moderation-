@@ -88,6 +88,19 @@ class BotSettings:
     activity_text: str | None
 
 
+@dataclass(slots=True)
+class PermissionOverride:
+    id: int
+    guild_id: int
+    action_type: str
+    target_user_id: int | None
+    moderator_id: int
+    executor_id: int
+    reason: str | None
+    timestamp: str
+    override_type: str
+
+
 def _csv_to_int_list(value: str | None) -> list[int]:
     if not value:
         return []
@@ -320,6 +333,25 @@ class Database:
                 activity_type TEXT,
                 activity_text TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS permission_overrides (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id        INTEGER NOT NULL,
+                action_type     TEXT NOT NULL,
+                target_user_id  INTEGER,
+                moderator_id    INTEGER NOT NULL,
+                executor_id     INTEGER NOT NULL,
+                reason          TEXT,
+                timestamp       TEXT NOT NULL,
+                override_type   TEXT NOT NULL DEFAULT 'owner_bypass'
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_permission_overrides_guild 
+                ON permission_overrides (guild_id);
+            CREATE INDEX IF NOT EXISTS idx_permission_overrides_executor 
+                ON permission_overrides (executor_id);
+            CREATE INDEX IF NOT EXISTS idx_permission_overrides_timestamp 
+                ON permission_overrides (timestamp);
             """
         )
         await self.conn.commit()
@@ -1272,3 +1304,157 @@ class Database:
             "status_type = NULL, activity_type = NULL, activity_text = NULL WHERE id = 1"
         )
         await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # Permission Overrides (Owner Immunity Bypass)
+    # ---------------------------------------------------------------------
+
+    async def add_permission_override(
+        self,
+        *,
+        guild_id: int,
+        action_type: str,
+        target_user_id: int | None,
+        moderator_id: int,
+        executor_id: int,
+        reason: str | None = None,
+        override_type: str = "owner_bypass",
+    ) -> int:
+        """Log a permission override action (owner bypassing staff immunity)."""
+        ts = utcnow().isoformat()
+        cur = await self.conn.execute(
+            """
+            INSERT INTO permission_overrides 
+            (guild_id, action_type, target_user_id, moderator_id, executor_id, reason, timestamp, override_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (guild_id, action_type, target_user_id, moderator_id, executor_id, reason, ts, override_type),
+        )
+        await self.conn.commit()
+        return int(cur.lastrowid)
+
+    async def get_override_logs(
+        self,
+        *,
+        guild_id: int | None = None,
+        executor_id: int | None = None,
+        target_user_id: int | None = None,
+        limit: int = 50,
+    ) -> list[PermissionOverride]:
+        """Get permission override logs with optional filtering."""
+        conditions = []
+        params: list[Any] = []
+        
+        if guild_id is not None:
+            conditions.append("guild_id = ?")
+            params.append(guild_id)
+        if executor_id is not None:
+            conditions.append("executor_id = ?")
+            params.append(executor_id)
+        if target_user_id is not None:
+            conditions.append("target_user_id = ?")
+            params.append(target_user_id)
+        
+        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        
+        async with self.conn.execute(
+            f"""
+            SELECT * FROM permission_overrides 
+            {where_clause}
+            ORDER BY timestamp DESC 
+            LIMIT ?
+            """,
+            params + [limit],
+        ) as cur:
+            rows = await cur.fetchall()
+        
+        return [
+            PermissionOverride(
+                id=row["id"],
+                guild_id=row["guild_id"],
+                action_type=row["action_type"],
+                target_user_id=row["target_user_id"],
+                moderator_id=row["moderator_id"],
+                executor_id=row["executor_id"],
+                reason=row["reason"],
+                timestamp=row["timestamp"],
+                override_type=row["override_type"],
+            )
+            for row in rows
+        ]
+
+    async def get_override_stats(self, *, guild_id: int | None = None, days: int = 30) -> dict[str, int]:
+        """Get statistics on permission overrides."""
+        cutoff = (utcnow() - timedelta(days=days)).isoformat()
+        
+        conditions = ["timestamp >= ?"]
+        params: list[Any] = [cutoff]
+        
+        if guild_id is not None:
+            conditions.append("guild_id = ?")
+            params.append(guild_id)
+        
+        where_clause = "WHERE " + " AND ".join(conditions)
+        
+        # Get total count
+        async with self.conn.execute(
+            f"SELECT COUNT(*) as count FROM permission_overrides {where_clause}",
+            params,
+        ) as cur:
+            row = await cur.fetchone()
+            total = row["count"] if row else 0
+        
+        # Get count by action type
+        async with self.conn.execute(
+            f"""
+            SELECT action_type, COUNT(*) as count 
+            FROM permission_overrides 
+            {where_clause}
+            GROUP BY action_type
+            """,
+            params,
+        ) as cur:
+            rows = await cur.fetchall()
+            by_action = {row["action_type"]: row["count"] for row in rows}
+        
+        # Get count by executor
+        async with self.conn.execute(
+            f"""
+            SELECT executor_id, COUNT(*) as count 
+            FROM permission_overrides 
+            {where_clause}
+            GROUP BY executor_id
+            """,
+            params,
+        ) as cur:
+            rows = await cur.fetchall()
+            by_executor = {row["executor_id"]: row["count"] for row in rows}
+        
+        return {
+            "total": total,
+            "by_action": by_action,
+            "by_executor": by_executor,
+        }
+
+    async def get_guilds_with_overrides(self, *, limit: int = 100) -> list[dict]:
+        """Get list of guilds that have had permission overrides."""
+        async with self.conn.execute(
+            """
+            SELECT guild_id, COUNT(*) as override_count, MAX(timestamp) as last_override
+            FROM permission_overrides
+            GROUP BY guild_id
+            ORDER BY last_override DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+        
+        return [
+            {
+                "guild_id": row["guild_id"],
+                "override_count": row["override_count"],
+                "last_override": row["last_override"],
+            }
+            for row in rows
+        ]

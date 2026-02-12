@@ -247,6 +247,150 @@ class OwnerCog(commands.Cog):
             embed = make_embed(action="error", title="❌ Error", description=f"Failed to set activity: {e}")
             await ctx.send(embed=embed)
 
+    # -------------------------------------------------------------------------
+    # Owner Override Audit Commands
+    # -------------------------------------------------------------------------
+
+    @commands.command(name="overrideaudit")
+    @require_owner()
+    async def override_audit(self, ctx: commands.Context, guild_id: int | None = None, limit: int = 20) -> None:
+        """View permission override audit logs.
+        
+        Usage: !overrideaudit [guild_id] [limit]
+        """
+        try:
+            logs = await self.db.get_override_logs(
+                guild_id=guild_id,
+                limit=min(limit, 100)  # Max 100 entries
+            )
+            
+            if not logs:
+                embed = make_embed(
+                    action="overrideaudit",
+                    title="📋 Override Audit Log",
+                    description="No override logs found."
+                )
+                await ctx.send(embed=embed)
+                return
+            
+            embed = make_embed(
+                action="overrideaudit",
+                title=f"📋 Override Audit Log ({len(logs)} entries)",
+                description="Recent owner immunity overrides:"
+            )
+            
+            for log in logs[:10]:  # Show up to 10 in embed
+                guild = self.bot.get_guild(log.guild_id)
+                guild_name = guild.name if guild else f"Unknown ({log.guild_id})"
+                
+                target_str = f"<@{log.target_user_id}>" if log.target_user_id else "N/A"
+                
+                value = (
+                    f"**Guild:** {guild_name}\n"
+                    f"**Target:** {target_str}\n"
+                    f"**Action:** {log.action_type}\n"
+                    f"**Reason:** {log.reason or 'No reason provided'}\n"
+                    f"**Time:** {log.timestamp[:19]}"
+                )
+                
+                embed.add_field(
+                    name=f"Override #{log.id}",
+                    value=value,
+                    inline=False
+                )
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Failed to get override audit: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to retrieve audit logs: {e}")
+            await ctx.send(embed=embed)
+
+    @commands.command(name="overridestats")
+    @require_owner()
+    async def override_stats(self, ctx: commands.Context, days: int = 30) -> None:
+        """Show permission override statistics.
+        
+        Usage: !overridestats [days]
+        """
+        try:
+            stats = await self.db.get_override_stats(days=days)
+            
+            embed = make_embed(
+                action="overridestats",
+                title=f"📊 Override Statistics (Past {days} days)",
+                description=f"**Total Overrides:** {stats['total']}"
+            )
+            
+            if stats['by_action']:
+                action_breakdown = "\n".join(
+                    f"• {action}: {count}"
+                    for action, count in sorted(stats['by_action'].items(), key=lambda x: x[1], reverse=True)
+                )
+                embed.add_field(
+                    name="By Action Type",
+                    value=action_breakdown or "No data",
+                    inline=False
+                )
+            
+            if stats['by_executor']:
+                executor_breakdown = "\n".join(
+                    f"• <@{executor_id}>: {count}"
+                    for executor_id, count in sorted(stats['by_executor'].items(), key=lambda x: x[1], reverse=True)
+                )
+                embed.add_field(
+                    name="By Executor",
+                    value=executor_breakdown or "No data",
+                    inline=False
+                )
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Failed to get override stats: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to retrieve statistics: {e}")
+            await ctx.send(embed=embed)
+
+    @commands.command(name="overrideguilds")
+    @require_owner()
+    async def override_guilds(self, ctx: commands.Context) -> None:
+        """Show guilds with permission overrides.
+        
+        Usage: !overrideguilds
+        """
+        try:
+            guilds = await self.db.get_guilds_with_overrides()
+            
+            if not guilds:
+                embed = make_embed(
+                    action="overrideguilds",
+                    title="🏰 Guilds with Overrides",
+                    description="No guilds have recorded permission overrides."
+                )
+                await ctx.send(embed=embed)
+                return
+            
+            lines = []
+            for g in guilds[:20]:  # Show top 20
+                guild = self.bot.get_guild(g['guild_id'])
+                guild_name = guild.name if guild else f"Unknown ({g['guild_id']})"
+                lines.append(
+                    f"• **{guild_name}** - {g['override_count']} overrides (last: {g['last_override'][:10]})"
+                )
+            
+            embed = make_embed(
+                action="overrideguilds",
+                title=f"🏰 Guilds with Overrides ({len(guilds)} total)",
+                description="\n".join(lines) if lines else "No data"
+            )
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Failed to get override guilds: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to retrieve guild list: {e}")
+            await ctx.send(embed=embed)
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(OwnerCog(bot))
