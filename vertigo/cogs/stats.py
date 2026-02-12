@@ -287,6 +287,7 @@ class StatsCog(commands.Cog):
         !staffstats
         """
         settings = await self._settings(ctx.guild)
+        trial_mod_roles = await self.db.get_trial_mod_roles(ctx.guild.id)
         
         # Get all staff members with their stats
         all_staff_stats = await self.db.get_all_staff_rankings(ctx.guild.id)
@@ -296,7 +297,7 @@ class StatsCog(commands.Cog):
         for stat in all_staff_stats:
             member = ctx.guild.get_member(stat['user_id'])
             if member:
-                level = role_level_for_member(member, settings)
+                level = role_level_for_member(member, settings, trial_mod_role_ids=trial_mod_roles)
                 enriched_staff.append({
                     'member': member,
                     'total': stat['total'],

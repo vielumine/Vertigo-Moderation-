@@ -429,7 +429,14 @@ class ModerationCog(commands.Cog):
             return True
         if target.guild_permissions.administrator:
             return True
-        staff_ids = set(settings.staff_role_ids + settings.head_mod_role_ids + settings.senior_mod_role_ids + settings.moderator_role_ids)
+        trial_mod_roles = await self.db.get_trial_mod_roles(ctx.guild.id)
+        staff_ids = set(
+            settings.staff_role_ids
+            + settings.head_mod_role_ids
+            + settings.senior_mod_role_ids
+            + settings.moderator_role_ids
+            + trial_mod_roles
+        )
         is_staff = any(r.id in staff_ids for r in target.roles)
         if is_staff and not (ctx.author.guild_permissions.administrator or any(r.id in settings.admin_role_ids for r in ctx.author.roles)):
             embed = make_embed(action="error", title="❌ Cannot Moderate Staff", description=f"@{target.name} is a staff member, I will not do that.")
@@ -442,7 +449,7 @@ class ModerationCog(commands.Cog):
     @commands.command(name="warn")
     @commands.guild_only()
     @commands_channel_check()
-    @require_level("moderator")
+    @require_level("trial_mod")
     async def warn(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
         """Warn a member."""
 
@@ -569,7 +576,7 @@ class ModerationCog(commands.Cog):
     @commands.command(name="warnings")
     @commands.guild_only()
     @commands_channel_check()
-    @require_level("moderator")
+    @require_level("trial_mod")
     async def warnings(self, ctx: commands.Context, member: discord.Member) -> None:
         """List active warnings."""
 
@@ -634,7 +641,7 @@ class ModerationCog(commands.Cog):
     @commands.command(name="mute")
     @commands.guild_only()
     @commands_channel_check()
-    @require_level("moderator")
+    @require_level("trial_mod")
     async def mute(self, ctx: commands.Context, member: discord.Member, duration: str, *, reason: str = "No reason provided") -> None:
         """Timeout (mute) a user."""
 

@@ -152,9 +152,15 @@ def has_any_role(member: discord.Member, role_ids: Sequence[int]) -> bool:
     return any(r.id in ids for r in member.roles)
 
 
-def role_level_for_member(member: discord.Member, settings: GuildSettings) -> str:
+def role_level_for_member(
+    member: discord.Member,
+    settings: GuildSettings,
+    *,
+    trial_mod_role_ids: Sequence[int] | None = None,
+) -> str:
     """Return a symbolic permission level."""
 
+    trial_mod_role_ids = trial_mod_role_ids or []
     if is_admin_member(member, settings):
         return "admin"
     if has_any_role(member, settings.head_mod_role_ids):
@@ -163,6 +169,8 @@ def role_level_for_member(member: discord.Member, settings: GuildSettings) -> st
         return "senior_mod"
     if has_any_role(member, settings.moderator_role_ids) or has_any_role(member, settings.staff_role_ids):
         return "moderator"
+    if has_any_role(member, trial_mod_role_ids):
+        return "trial_mod"
     return "member"
 
 
@@ -348,7 +356,7 @@ def commands_channel_check() -> commands.Check:
 
 
 def require_level(min_level: str) -> commands.Check:
-    levels = {"member": 0, "moderator": 1, "senior_mod": 2, "head_mod": 3, "admin": 4}
+    levels = {"member": 0, "trial_mod": 1, "moderator": 2, "senior_mod": 3, "head_mod": 4, "admin": 5}
 
     async def predicate(ctx: commands.Context) -> bool:
         if ctx.guild is None or not isinstance(ctx.author, discord.Member):
@@ -357,7 +365,8 @@ def require_level(min_level: str) -> commands.Check:
         if db is None:
             return False
         settings: GuildSettings = await db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
-        have = role_level_for_member(ctx.author, settings)
+        trial_mod_roles = await db.get_trial_mod_roles(ctx.guild.id)
+        have = role_level_for_member(ctx.author, settings, trial_mod_role_ids=trial_mod_roles)
         if levels[have] < levels[min_level]:
             embed = make_embed(action="error", title="No Permission", description="You don't have permission to use this command.")
             await ctx.send(embed=embed)

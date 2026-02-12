@@ -925,6 +925,31 @@ class Database:
         await self.conn.commit()
 
     # ---------------------------------------------------------------------
+    # Trial Mod Roles
+    # ---------------------------------------------------------------------
+
+    async def get_trial_mod_roles(self, guild_id: int) -> list[int]:
+        """Get trial moderator role IDs for a guild."""
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO trial_mod_roles (guild_id, role_ids) VALUES (?, '')",
+            (guild_id,),
+        )
+        await self.conn.commit()
+        async with self.conn.execute("SELECT role_ids FROM trial_mod_roles WHERE guild_id = ?", (guild_id,)) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return []
+        return _csv_to_int_list(row["role_ids"])
+
+    async def set_trial_mod_roles(self, guild_id: int, role_ids: list[int]) -> None:
+        """Set trial moderator role IDs for a guild."""
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO trial_mod_roles (guild_id, role_ids) VALUES (?, ?)",
+            (guild_id, _int_list_to_csv(role_ids)),
+        )
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------------
     # Staff Hierarchy
     # ---------------------------------------------------------------------
 

@@ -7,8 +7,9 @@ import logging
 import discord
 from discord.ext import commands
 
+import config
 from database import Database
-from helpers import commands_channel_check, discord_timestamp, make_embed
+from helpers import commands_channel_check, discord_timestamp, make_embed, role_level_for_member
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +70,21 @@ class MemberCog(commands.Cog):
             return
         member = ctx.author
         roles = [r.mention for r in member.roles if r != ctx.guild.default_role]
+        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)  # type: ignore[union-attr]
+        trial_mod_roles = await self.db.get_trial_mod_roles(ctx.guild.id)  # type: ignore[union-attr]
+        level = role_level_for_member(member, settings, trial_mod_role_ids=trial_mod_roles)
+        level_label = {
+            "admin": "Administrator",
+            "head_mod": "Head Moderator",
+            "senior_mod": "Senior Moderator",
+            "moderator": "Moderator",
+            "trial_mod": "Trial Moderator",
+            "member": "Member",
+        }[level]
         embed = make_embed(action="myinfo", title="👤 Your Information")
         embed.set_thumbnail(url=member.display_avatar.url)
         embed.add_field(name="📍 ID", value=str(member.id), inline=True)
+        embed.add_field(name="🛡️ Position", value=level_label, inline=True)
         embed.add_field(name="📅 Account Created", value=discord.utils.format_dt(member.created_at), inline=False)
         embed.add_field(name="📅 Joined Server", value=discord.utils.format_dt(member.joined_at) if member.joined_at else "Unknown", inline=False)
         embed.add_field(name="📌 Roles", value=", ".join(roles) if roles else "None", inline=False)
