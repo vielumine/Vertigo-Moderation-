@@ -255,11 +255,14 @@ class MemberCog(commands.Cog):
     @commands.guild_only()
     async def afk(self, ctx: commands.Context, *, reason: str | None = None) -> None:
         """Set yourself as AFK with an optional reason.
-        
+
         Usage: !afk [reason]
         """
+        if ctx.author.bot:
+            return
+
         await self.db.set_afk(user_id=ctx.author.id, guild_id=ctx.guild.id, reason=reason)
-        
+
         reason_text = f" - {reason}" if reason else ""
         embed = make_embed(
             action="success",

@@ -339,7 +339,9 @@ async def main() -> None:
             for mentioned_user in message.mentions:
                 if mentioned_user.id == message.author.id:
                     continue  # Skip self-mentions
-                
+                if mentioned_user.bot:
+                    continue  # Skip bot mentions
+
                 afk_status = await bot.db.get_afk(user_id=mentioned_user.id, guild_id=message.guild.id)
                 if afk_status:
                     reason, timestamp = afk_status
@@ -352,7 +354,7 @@ async def main() -> None:
                         await message.channel.send(embed=embed, delete_after=10)
                     except Exception:
                         pass
-                    
+
                     # Record the ping
                     ping_info = f"{message.author.mention} [Jump]({message.jump_url})"
                     await bot.db.add_afk_ping(
