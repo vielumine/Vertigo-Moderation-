@@ -33,6 +33,7 @@ class BackgroundTasksCog(commands.Cog):
         self.ai_rate_limit_cleanup_loop.start()
         self.reminder_check_loop.start()
         self.stats_dashboard_loop.start()
+        self.promotion_analysis_loop.start()
 
     @property
     def db(self) -> Database:
@@ -279,12 +280,75 @@ class BackgroundTasksCog(commands.Cog):
         except Exception:
             logger.exception("stats_dashboard_loop failed")
 
+    @tasks.loop(hours=24)
+    async def promotion_analysis_loop(self) -> None:
+        """Analyze staff performance and generate promotion/demotion suggestions daily."""
+        try:
+            from services.promotion_engine import StaffPromotionEngine
+            
+            engine = StaffPromotionEngine(self.bot, self.db)
+            
+            # Analyze staff in all guilds
+            for guild in self.bot.guilds:
+                try:
+                    settings = await self.db.get_guild_settings(guild.id, default_prefix=config.DEFAULT_PREFIX)
+                    
+                    # Skip if no promotion channel configured
+                    if not settings.promotion_channel_id:
+                        continue
+                    
+                    channel = guild.get_channel(settings.promotion_channel_id)
+                    if not channel or not isinstance(channel, discord.abc.Messageable):
+                        continue
+                    
+                    # Analyze all staff
+                    results = await engine.analyze_all_staff(guild, settings)
+                    
+                    # Send summary to promotion channel
+                    if results["promotions"] or results["warnings"]:
+                        summary_embed = make_embed(
+                            action="success",
+                            title="📈 Daily Staff Performance Analysis",
+                            description=f"Analyzed {results['total_staff']} staff members."
+                        )
+                        summary_embed.add_field(
+                            name="📊 Results",
+                            value=(
+                                f"**Promotion Suggestions:** {len(results['promotions'])}\n"
+                                f"**Performance Warnings:** {len(results['warnings'])}"
+                            ),
+                            inline=False
+                        )
+                        summary_embed.add_field(
+                            name="📋 Review",
+                            value=f"Use `{settings.prefix}promotion list` to review pending suggestions.",
+                            inline=False
+                        )
+                        
+                        await channel.send(embed=summary_embed)
+                        
+                        # Send individual suggestion notifications
+                        pending_suggestions = await self.db.get_pending_suggestions(guild.id)
+                        for suggestion in pending_suggestions[-5:]:  # Only notify about last 5 new ones
+                            try:
+                                embed = await engine.create_suggestion_embed(suggestion)
+                                await channel.send(embed=embed)
+                            except Exception:
+                                logger.exception(f"Failed to send suggestion embed for suggestion {suggestion['id']}")
+                    
+                except Exception:
+                    logger.exception(f"Promotion analysis failed for guild {guild.id}")
+        
+        except Exception:
+            logger.exception("promotion_analysis_loop failed")
+
     @warn_expiry_loop.before_loop
     @temp_role_expiry_loop.before_loop
     @staff_flag_expiry_loop.before_loop
     @mute_expiry_loop.before_loop
     @reminder_check_loop.before_loop
     @stats_dashboard_loop.before_loop
+    @promotion_analysis_loop.before_loop
     async def _before(self) -> None:
         await self.bot.wait_until_ready()
 

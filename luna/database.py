@@ -79,6 +79,34 @@ class TimeoutSettings:
     enabled: bool
 
 
+@dataclass(slots=True)
+class DMNotificationSettings:
+    guild_id: int
+    enabled: bool
+    notify_warns: bool
+    notify_mutes: bool
+    notify_kicks: bool
+    notify_bans: bool
+    notify_flags: bool
+
+
+@dataclass(slots=True)
+class PromotionSuggestion:
+    id: int
+    guild_id: int
+    user_id: int
+    suggestion_type: str
+    current_role: str | None
+    suggested_role: str | None
+    confidence: float
+    reason: str | None
+    metrics: str | None
+    timestamp: str
+    status: str
+    reviewed_by: int | None
+    reviewed_at: str | None
+
+
 def _csv_to_int_list(value: str | None) -> list[int]:
     if not value:
         return []
@@ -357,6 +385,64 @@ class Database:
             CREATE TABLE IF NOT EXISTS stats (
                 key             TEXT PRIMARY KEY,
                 value           INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS dm_notification_settings (
+                guild_id        INTEGER PRIMARY KEY,
+                enabled         INTEGER NOT NULL DEFAULT 1,
+                notify_warns    INTEGER NOT NULL DEFAULT 1,
+                notify_mutes    INTEGER NOT NULL DEFAULT 1,
+                notify_kicks    INTEGER NOT NULL DEFAULT 1,
+                notify_bans     INTEGER NOT NULL DEFAULT 1,
+                notify_flags    INTEGER NOT NULL DEFAULT 1
+            );
+
+            CREATE TABLE IF NOT EXISTS dm_notification_log (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id        INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                action_type     TEXT NOT NULL,
+                timestamp       TEXT NOT NULL,
+                success         INTEGER NOT NULL,
+                reason          TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS staff_performance_metrics (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id        INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                period_start    TEXT NOT NULL,
+                period_end      TEXT NOT NULL,
+                warns_count     INTEGER DEFAULT 0,
+                mutes_count     INTEGER DEFAULT 0,
+                kicks_count     INTEGER DEFAULT 0,
+                bans_count      INTEGER DEFAULT 0,
+                total_actions   INTEGER DEFAULT 0,
+                activity_score  REAL DEFAULT 0,
+                UNIQUE(guild_id, user_id, period_start)
+            );
+
+            CREATE TABLE IF NOT EXISTS promotion_suggestions (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id        INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                suggestion_type TEXT NOT NULL,
+                current_role    TEXT,
+                suggested_role  TEXT,
+                confidence      REAL DEFAULT 0,
+                reason          TEXT,
+                metrics         TEXT,
+                timestamp       TEXT NOT NULL,
+                status          TEXT DEFAULT 'pending',
+                reviewed_by     INTEGER,
+                reviewed_at     TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS dm_preferences (
+                user_id         INTEGER NOT NULL,
+                guild_id        INTEGER NOT NULL,
+                receive_dms     INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (user_id, guild_id)
             );
             """
         )
@@ -1425,3 +1511,185 @@ class Database:
             (key, value),
         )
         await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # DM Notification Settings
+    # ---------------------------------------------------------------------
+
+    async def get_dm_notification_settings(self, guild_id: int) -> DMNotificationSettings:
+        """Get DM notification settings for a guild."""
+        async with self.conn.execute("SELECT * FROM dm_notification_settings WHERE guild_id = ?", (guild_id,)) as cur:
+            row = await cur.fetchone()
+        
+        if row is None:
+            # Create default settings
+            await self.conn.execute(
+                "INSERT OR IGNORE INTO dm_notification_settings (guild_id) VALUES (?)",
+                (guild_id,),
+            )
+            await self.conn.commit()
+            async with self.conn.execute("SELECT * FROM dm_notification_settings WHERE guild_id = ?", (guild_id,)) as cur:
+                row = await cur.fetchone()
+        
+        assert row is not None
+        return DMNotificationSettings(
+            guild_id=row["guild_id"],
+            enabled=bool(row["enabled"]),
+            notify_warns=bool(row["notify_warns"]),
+            notify_mutes=bool(row["notify_mutes"]),
+            notify_kicks=bool(row["notify_kicks"]),
+            notify_bans=bool(row["notify_bans"]),
+            notify_flags=bool(row["notify_flags"]),
+        )
+
+    async def update_dm_notification_settings(self, guild_id: int, **kwargs: Any) -> None:
+        """Update DM notification settings."""
+        if not kwargs:
+            return
+        
+        normalized: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            if key in {"enabled", "notify_warns", "notify_mutes", "notify_kicks", "notify_bans", "notify_flags"}:
+                normalized[key] = int(bool(value))
+        
+        fields = ", ".join(f"{k} = ?" for k in normalized)
+        params = list(normalized.values()) + [guild_id]
+        await self.conn.execute(f"UPDATE dm_notification_settings SET {fields} WHERE guild_id = ?", params)
+        await self.conn.commit()
+
+    async def log_dm_notification(self, *, guild_id: int, user_id: int, action_type: str, success: bool, reason: str | None = None) -> None:
+        """Log a DM notification attempt."""
+        ts = utcnow().isoformat()
+        await self.conn.execute(
+            "INSERT INTO dm_notification_log (guild_id, user_id, action_type, timestamp, success, reason) VALUES (?, ?, ?, ?, ?, ?)",
+            (guild_id, user_id, action_type, ts, int(success), reason),
+        )
+        await self.conn.commit()
+
+    async def get_dm_preference(self, user_id: int, guild_id: int) -> bool:
+        """Check if user wants to receive DMs."""
+        async with self.conn.execute(
+            "SELECT receive_dms FROM dm_preferences WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id)
+        ) as cur:
+            row = await cur.fetchone()
+        
+        if row is None:
+            return True  # Default to enabled
+        
+        return bool(row["receive_dms"])
+
+    async def set_dm_preference(self, user_id: int, guild_id: int, receive_dms: bool) -> None:
+        """Set user's DM preference."""
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO dm_preferences (user_id, guild_id, receive_dms) VALUES (?, ?, ?)",
+            (user_id, guild_id, int(receive_dms)),
+        )
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # Staff Performance Metrics
+    # ---------------------------------------------------------------------
+
+    async def record_performance_metrics(
+        self,
+        *,
+        guild_id: int,
+        user_id: int,
+        period_start: str,
+        period_end: str,
+        warns_count: int = 0,
+        mutes_count: int = 0,
+        kicks_count: int = 0,
+        bans_count: int = 0,
+        activity_score: float = 0.0
+    ) -> None:
+        """Record staff performance metrics for a period."""
+        total_actions = warns_count + mutes_count + kicks_count + bans_count
+        await self.conn.execute(
+            """
+            INSERT OR REPLACE INTO staff_performance_metrics 
+            (guild_id, user_id, period_start, period_end, warns_count, mutes_count, kicks_count, bans_count, total_actions, activity_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (guild_id, user_id, period_start, period_end, warns_count, mutes_count, kicks_count, bans_count, total_actions, activity_score),
+        )
+        await self.conn.commit()
+
+    async def get_performance_metrics(self, guild_id: int, user_id: int, period_start: str) -> aiosqlite.Row | None:
+        """Get performance metrics for a specific period."""
+        async with self.conn.execute(
+            "SELECT * FROM staff_performance_metrics WHERE guild_id = ? AND user_id = ? AND period_start = ?",
+            (guild_id, user_id, period_start),
+        ) as cur:
+            return await cur.fetchone()
+
+    async def get_all_staff_performance(self, guild_id: int, period_start: str) -> list[aiosqlite.Row]:
+        """Get all staff performance for a specific period."""
+        async with self.conn.execute(
+            "SELECT * FROM staff_performance_metrics WHERE guild_id = ? AND period_start = ? ORDER BY total_actions DESC",
+            (guild_id, period_start),
+        ) as cur:
+            return await cur.fetchall()
+
+    # ---------------------------------------------------------------------
+    # Promotion Suggestions
+    # ---------------------------------------------------------------------
+
+    async def add_promotion_suggestion(
+        self,
+        *,
+        guild_id: int,
+        user_id: int,
+        suggestion_type: str,
+        current_role: str | None,
+        suggested_role: str | None,
+        confidence: float,
+        reason: str | None,
+        metrics: str | None
+    ) -> int:
+        """Add a promotion suggestion."""
+        ts = utcnow().isoformat()
+        cur = await self.conn.execute(
+            """
+            INSERT INTO promotion_suggestions 
+            (guild_id, user_id, suggestion_type, current_role, suggested_role, confidence, reason, metrics, timestamp, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+            """,
+            (guild_id, user_id, suggestion_type, current_role, suggested_role, confidence, reason, metrics, ts),
+        )
+        await self.conn.commit()
+        return int(cur.lastrowid)
+
+    async def get_pending_suggestions(self, guild_id: int) -> list[aiosqlite.Row]:
+        """Get all pending promotion suggestions."""
+        async with self.conn.execute(
+            "SELECT * FROM promotion_suggestions WHERE guild_id = ? AND status = 'pending' ORDER BY timestamp DESC",
+            (guild_id,),
+        ) as cur:
+            return await cur.fetchall()
+
+    async def get_suggestion(self, suggestion_id: int) -> aiosqlite.Row | None:
+        """Get a specific promotion suggestion."""
+        async with self.conn.execute(
+            "SELECT * FROM promotion_suggestions WHERE id = ?",
+            (suggestion_id,),
+        ) as cur:
+            return await cur.fetchone()
+
+    async def review_suggestion(self, suggestion_id: int, reviewed_by: int, status: str) -> None:
+        """Review a promotion suggestion."""
+        ts = utcnow().isoformat()
+        await self.conn.execute(
+            "UPDATE promotion_suggestions SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
+            (status, reviewed_by, ts, suggestion_id),
+        )
+        await self.conn.commit()
+
+    async def get_user_suggestions(self, guild_id: int, user_id: int, limit: int = 10) -> list[aiosqlite.Row]:
+        """Get promotion suggestions for a specific user."""
+        async with self.conn.execute(
+            "SELECT * FROM promotion_suggestions WHERE guild_id = ? AND user_id = ? ORDER BY timestamp DESC LIMIT ?",
+            (guild_id, user_id, limit),
+        ) as cur:
+            return await cur.fetchall()

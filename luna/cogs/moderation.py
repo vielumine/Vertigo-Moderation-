@@ -28,6 +28,7 @@ from helpers import (
     safe_delete,
     safe_dm,
 )
+from services.notification_service import ModActionNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +233,7 @@ class ModerationCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.notifier = ModActionNotifier(bot, bot.db)  # type: ignore[attr-defined]
 
     @property
     def db(self) -> Database:
@@ -268,19 +270,27 @@ class ModerationCog(commands.Cog):
 
         settings = await self._settings(ctx.guild)  # type: ignore[arg-type]
 
-        dm_embed = make_embed(
-            action="warn",
-            title=f"⚠️ You were warned in {ctx.guild.name}",
-            description=f"📝 Reason: {reason}",
-        )
-        await safe_dm(member, embed=dm_embed)
-
         warn_id = await self.db.add_warning(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
             user_id=member.id,
             moderator_id=ctx.author.id,
             reason=reason,
             warn_days=settings.warn_duration,
+        )
+
+        # Get active warnings count for notification
+        active_warns = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)  # type: ignore[union-attr]
+        active_warns_count = len(active_warns)
+
+        # Send enhanced DM notification via notification service
+        await self.notifier.send_warn_notification(
+            user=member,
+            guild=ctx.guild,  # type: ignore[arg-type]
+            reason=reason,
+            warn_id=warn_id,
+            moderator=ctx.author,  # type: ignore[arg-type]
+            warn_duration=settings.warn_duration,
+            active_warns_count=active_warns_count
         )
 
         embed = make_embed(
@@ -442,13 +452,7 @@ class ModerationCog(commands.Cog):
 
         seconds = parse_duration(duration)
         until = discord.utils.utcnow() + timedelta(seconds=seconds)
-
-        dm_embed = make_embed(
-            action="mute",
-            title=f"🔇 You were muted in {ctx.guild.name}",
-            description=f"⏱️ Duration: {humanize_seconds(seconds)}\n📝 Reason: {reason}",
-        )
-        await safe_dm(member, embed=dm_embed)
+        duration_text = humanize_seconds(seconds)
 
         try:
             await member.timeout(until, reason=reason)
@@ -465,10 +469,19 @@ class ModerationCog(commands.Cog):
             duration_seconds=seconds,
         )
 
+        # Send enhanced DM notification via notification service
+        await self.notifier.send_mute_notification(
+            user=member,
+            guild=ctx.guild,  # type: ignore[arg-type]
+            reason=reason,
+            duration=duration_text,
+            moderator=ctx.author  # type: ignore[arg-type]
+        )
+
         embed = make_embed(
             action="mute",
             title="🔇 User Muted",
-            description=f"👤 {member.mention} has been muted for **{humanize_seconds(seconds)}**.\n\n📝 **Reason:** {reason}",
+            description=f"👤 {member.mention} has been muted for **{duration_text}**.\n\n📝 **Reason:** {reason}",
         )
         embed.add_field(name="👮 Moderator", value=ctx.author.mention, inline=True)
         embed, file = attach_gif(embed, gif_key="MUTE")
@@ -555,12 +568,13 @@ class ModerationCog(commands.Cog):
         if await self._blocked_by_staff_immunity(ctx, member):
             return
 
-        dm_embed = make_embed(
-            action="kick",
-            title=f"👢 You were kicked from {ctx.guild.name}",
-            description=f"📝 Reason: {reason}",
+        # Send enhanced DM notification via notification service (before kick)
+        await self.notifier.send_kick_notification(
+            user=member,
+            guild=ctx.guild,  # type: ignore[arg-type]
+            reason=reason,
+            moderator=ctx.author  # type: ignore[arg-type]
         )
-        await safe_dm(member, embed=dm_embed)
 
         try:
             await member.kick(reason=reason)
@@ -601,12 +615,13 @@ class ModerationCog(commands.Cog):
         if await self._blocked_by_staff_immunity(ctx, member):
             return
 
-        dm_embed = make_embed(
-            action="ban",
-            title=f"🚫 You were banned from {ctx.guild.name}",
-            description=f"📝 Reason: {reason}",
+        # Send enhanced DM notification via notification service (before ban)
+        await self.notifier.send_ban_notification(
+            user=member,
+            guild=ctx.guild,  # type: ignore[arg-type]
+            reason=reason,
+            moderator=ctx.author  # type: ignore[arg-type]
         )
-        await safe_dm(member, embed=dm_embed)
 
         try:
             await ctx.guild.ban(member, reason=reason, delete_message_days=0)
