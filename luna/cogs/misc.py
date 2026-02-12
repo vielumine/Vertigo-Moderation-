@@ -19,6 +19,7 @@ from helpers import (
     require_level,
     safe_delete,
     timed_rest_call,
+    humanize_seconds,
 )
 
 logger = logging.getLogger(__name__)
@@ -259,8 +260,9 @@ class MiscCog(commands.Cog):
             return
         now = discord.utils.utcnow()
         remaining = int((until - now).total_seconds())
-        embed = make_embed(action="checkdur", title="⏱️ Timeout Duration", description=f"Remaining: **{max(0, remaining)}s**")
-        embed.add_field(name="📅 Ends", value=discord.utils.format_dt(until), inline=False)
+        remaining_str = humanize_seconds(max(0, remaining))
+        embed = make_embed(action="checkdur", title="⏱️ Timeout Duration", description=f"Remaining: **{remaining_str}**")
+        embed.add_field(name="📅 Ends", value=discord.utils.format_dt(until, style="R"), inline=False)
         await ctx.send(embed=embed)
 
     @commands.command(name="ping")
@@ -508,8 +510,7 @@ class MiscCog(commands.Cog):
                     f"`{prefix}mywarns`\n"
                     f"`{prefix}myavatar`\n"
                     f"`{prefix}mybanner`\n"
-                    f"`{prefix}myinfo`\n"
-                    f"`{prefix}translate <text> [target_language]`"
+                    f"`{prefix}myinfo`"
                 ),
             ),
         }
@@ -542,6 +543,7 @@ class MiscCog(commands.Cog):
                 f"`{prefix}terminate <staff_user>` - Manually terminate staff\n"
                 f"`{prefix}lockchannels` - Lock all configured categories\n"
                 f"`{prefix}unlockchannels` - Unlock all configured categories\n"
+                f"`{prefix}timeoutpanel` - Manage prohibited terms and timeout settings\n"
                 f"`{prefix}scanacc <user>` - Scan account for suspicious activity\n"
                 f"`{prefix}wasstaff <user>` - Check staff history"
             ),

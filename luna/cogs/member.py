@@ -76,15 +76,6 @@ class MemberCog(commands.Cog):
         embed.add_field(name="📌 Roles", value=", ".join(roles) if roles else "None", inline=False)
         await ctx.send(embed=embed)
 
-    @commands.command(name="translate")
-    @commands.guild_only()
-    @commands_channel_check()
-    async def translate(self, ctx: commands.Context, *, text: str) -> None:
-        """Translate text to English if a translation backend is available."""
-
-        embed = make_embed(action="translate", title="🌐 Translation", description="Translation backend not configured.")
-        await ctx.send(embed=embed)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(MemberCog(bot))
