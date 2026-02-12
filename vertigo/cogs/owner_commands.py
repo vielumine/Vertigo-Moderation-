@@ -34,16 +34,28 @@ class OwnerCommandsCog(commands.Cog):
             embed.add_field(
                 name="🔧 Owner Only Commands",
                 value=(
+                    "**Bot Management:**\n"
+                    "`!botavatar [url|attachment]` - Change bot avatar\n"
+                    "`!botbanner [url|attachment]` - Change bot banner\n"
+                    "`!botname <name>` - Change bot username\n"
+                    "`!botstatus <status>` - Change bot presence\n"
+                    "`!botactivity <type> <text>` - Set bot activity\n"
+                    "`!botinfo` - View current bot settings\n"
+                    "`!botreset` - Reset all bot settings\n\n"
+                    "**Guild Management:**\n"
+                    "`!guilds` - List all connected guilds\n"
+                    "`!dmuser <user> <msg>` - DM a user\n"
+                    "`!waketime` - Show bot uptime\n"
+                    "`!banguild <id> [reason]` - Blacklist guild\n"
+                    "`!unbanguild <id>` - Unblacklist guild\n"
+                    "`!checkguild <id>` - Check guild info\n\n"
                     "**AI Moderation:**\n"
                     "`!aiwarn`, `!aimute`, `!aikick`, `!aiban`, `!aiflag`\n"
                     "`!aitarget`, `!airemove`\n"
                     "`!blacklist`, `!unblacklist`, `!seeblacklist`\n"
                     "`!timeoutpanel`\n\n"
                     "**AI Chatbot:**\n"
-                    "`!ai`, `!toggle_ai`, `!ai_settings`\n\n"
-                    "**Owner Management:**\n"
-                    "`!commands`, `!blacklist`, `!guilds`\n"
-                    "`!eval`, `!restart` (if implemented)"
+                    "`!ai`, `!toggle_ai`, `!ai_settings`"
                 ),
                 inline=False
             )

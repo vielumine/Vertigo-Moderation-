@@ -78,6 +78,16 @@ class TimeoutSettings:
     enabled: bool
 
 
+@dataclass(slots=True)
+class BotSettings:
+    avatar_url: str | None
+    banner_url: str | None
+    custom_name: str | None
+    status_type: str | None
+    activity_type: str | None
+    activity_text: str | None
+
+
 def _csv_to_int_list(value: str | None) -> list[int]:
     if not value:
         return []
@@ -299,6 +309,16 @@ class Database:
             CREATE TABLE IF NOT EXISTS trial_mod_roles (
                 guild_id        INTEGER PRIMARY KEY,
                 role_ids        TEXT DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                id INTEGER PRIMARY CHECK (id = 1),
+                avatar_url TEXT,
+                banner_url TEXT,
+                custom_name TEXT,
+                status_type TEXT,
+                activity_type TEXT,
+                activity_text TEXT
             );
             """
         )
@@ -1200,5 +1220,55 @@ class Database:
         await self.conn.execute(
             "INSERT OR REPLACE INTO trial_mod_roles (guild_id, role_ids) VALUES (?, ?)",
             (guild_id, _int_list_to_csv(role_ids)),
+        )
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # Bot Settings
+    # ---------------------------------------------------------------------
+
+    async def get_bot_settings(self) -> BotSettings:
+        """Get bot customization settings."""
+        await self.conn.execute("INSERT OR IGNORE INTO bot_settings (id) VALUES (1)")
+        await self.conn.commit()
+
+        async with self.conn.execute("SELECT * FROM bot_settings WHERE id = 1") as cur:
+            row = await cur.fetchone()
+
+        if row is None:
+            return BotSettings(
+                avatar_url=None,
+                banner_url=None,
+                custom_name=None,
+                status_type=None,
+                activity_type=None,
+                activity_text=None,
+            )
+
+        return BotSettings(
+            avatar_url=row["avatar_url"],
+            banner_url=row["banner_url"],
+            custom_name=row["custom_name"],
+            status_type=row["status_type"],
+            activity_type=row["activity_type"],
+            activity_text=row["activity_text"],
+        )
+
+    async def update_bot_settings(self, **kwargs: Any) -> None:
+        """Update bot customization settings."""
+        await self.conn.execute("INSERT OR IGNORE INTO bot_settings (id) VALUES (1)")
+
+        if kwargs:
+            fields = ", ".join(f"{k} = ?" for k in kwargs)
+            params = list(kwargs.values()) + [1]
+            await self.conn.execute(f"UPDATE bot_settings SET {fields} WHERE id = ?", params)
+        await self.conn.commit()
+
+    async def reset_bot_settings(self) -> None:
+        """Reset all bot customization settings to defaults."""
+        await self.conn.execute("INSERT OR IGNORE INTO bot_settings (id) VALUES (1)")
+        await self.conn.execute(
+            "UPDATE bot_settings SET avatar_url = NULL, banner_url = NULL, custom_name = NULL, "
+            "status_type = NULL, activity_type = NULL, activity_text = NULL WHERE id = 1"
         )
         await self.conn.commit()
