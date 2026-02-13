@@ -1,12 +1,16 @@
-"""Helper utilities for Luna.
+"""Helper utilities for Vertigo.
 
 This module contains:
 - parsing (durations, ids)
 - permission checks based on per-guild settings
-- embed / response builders using the lunar theme
+- embed / response builders using the red+gray theme
 - pagination views for longer command output
-- Gemini AI integration
-- Tags, shifts, and reminder helpers
+
+Button Color Scheme (Discord ButtonStyle):
+- Red (danger): Delete, undo, remove, dangerous actions
+- Green (success): Confirm, approve, yes, save
+- Blue (primary): Info, view, select, filter, edit
+- Gray (secondary): Cancel, back, no, neutral/navigation actions
 """
 
 from __future__ import annotations
@@ -19,18 +23,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 
+import aiosqlite
 import discord
+from huggingface_hub import InferenceClient
 from discord.ext import commands
 
 import config
 from database import AISettings, GuildSettings
-
-# Try to import Gemini
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +108,29 @@ def humanize_seconds(seconds: int) -> str:
     return " ".join(parts)
 
 
+def to_unix_timestamp(dt: datetime | str) -> int:
+    """Convert datetime or ISO string to Unix timestamp."""
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+    return int(dt.timestamp())
+
+
+def discord_timestamp(dt: datetime | str, style: str = "f") -> str:
+    """Convert datetime or ISO string to Discord timestamp format.
+    
+    Styles:
+    - t: Short Time (16:20)
+    - T: Long Time (16:20:30)
+    - d: Short Date (20/04/2021)
+    - D: Long Date (20 April 2021)
+    - f: Short Date/Time (default) (20 April 2021 16:20)
+    - F: Long Date/Time (Tuesday, 20 April 2021 16:20)
+    - R: Relative Time (2 months ago)
+    """
+    timestamp = to_unix_timestamp(dt)
+    return f"<t:{timestamp}:{style}>"
+
+
 def is_admin_member(member: discord.Member, settings: GuildSettings) -> bool:
     if member.guild_permissions.administrator:
         return True
@@ -131,9 +153,15 @@ def has_any_role(member: discord.Member, role_ids: Sequence[int]) -> bool:
     return any(r.id in ids for r in member.roles)
 
 
-def role_level_for_member(member: discord.Member, settings: GuildSettings) -> str:
+def role_level_for_member(
+    member: discord.Member,
+    settings: GuildSettings,
+    *,
+    trial_mod_role_ids: Sequence[int] | None = None,
+) -> str:
     """Return a symbolic permission level."""
 
+    trial_mod_role_ids = trial_mod_role_ids or []
     if is_admin_member(member, settings):
         return "admin"
     if has_any_role(member, settings.head_mod_role_ids):
@@ -142,7 +170,137 @@ def role_level_for_member(member: discord.Member, settings: GuildSettings) -> st
         return "senior_mod"
     if has_any_role(member, settings.moderator_role_ids) or has_any_role(member, settings.staff_role_ids):
         return "moderator"
+    if has_any_role(member, trial_mod_role_ids):
+        return "trial_mod"
     return "member"
+
+
+async def is_trial_mod(member: discord.Member, db) -> bool:
+    """Check if member is a trial moderator."""
+    trial_roles = await db.get_trial_mod_roles(member.guild.id)
+    return any(r.id in trial_roles for r in member.roles)
+
+
+def get_user_type(member: discord.Member, settings: GuildSettings) -> str:
+    """Return human-readable user type/position.
+    
+    Hierarchy: Member < Moderator < Senior Mod < Head Mod < Admin < Owner
+    """
+    if is_owner(member.id):
+        return "Bot Owner"
+    if is_admin_member(member, settings):
+        return "Administrator"
+    if has_any_role(member, settings.head_mod_role_ids):
+        return "Head Moderator"
+    if has_any_role(member, settings.senior_mod_role_ids):
+        return "Senior Moderator"
+    if has_any_role(member, settings.moderator_role_ids) or has_any_role(member, settings.staff_role_ids):
+        return "Moderator"
+    return "Member"
+
+
+def get_trial_mod_status(member: discord.Member, trial_mod_role_ids: Sequence[int]) -> str | None:
+    """Return trial mod status if applicable."""
+    if has_any_role(member, trial_mod_role_ids):
+        return "Trial Moderator"
+    return None
+
+
+def calculate_danger_level(flags: list[aiosqlite.Row]) -> int:
+    """Calculate danger level from active staff flags.
+    
+    Each flag contributes 1 danger point (strike).
+    """
+    return len(flags)
+
+
+def is_owner(user_id: int) -> bool:
+    """Check if user is the bot owner."""
+    return user_id == config.OWNER_ID if config.OWNER_ID else False
+
+
+def can_override_staff_immunity(executor: discord.Member, target: discord.Member, settings: GuildSettings) -> bool:
+    """Check if the executor can override staff immunity restrictions.
+    
+    The bot owner can always override staff immunity.
+    Regular admins cannot override - they must use normal staff immunity rules.
+    """
+    # Owner can always override
+    if is_owner(executor.id):
+        return True
+    return False
+
+
+def check_staff_immunity_with_override(
+    executor: discord.Member,
+    target: discord.Member,
+    settings: GuildSettings,
+    trial_mod_role_ids: Sequence[int],
+) -> tuple[bool, bool]:
+    """Check if action is blocked by staff immunity, considering owner override.
+    
+    Returns:
+        tuple: (is_blocked, is_owner_override)
+        - is_blocked: True if action should be blocked
+        - is_owner_override: True if owner is bypassing normal restrictions
+    """
+    # Check if target is staff
+    staff_ids = set(
+        settings.staff_role_ids
+        + settings.head_mod_role_ids
+        + settings.senior_mod_role_ids
+        + settings.moderator_role_ids
+        + list(trial_mod_role_ids)
+    )
+    is_target_staff = any(r.id in staff_ids for r in target.roles)
+    is_target_admin = target.guild_permissions.administrator
+    
+    # If target is not staff and not admin, no immunity check needed
+    if not is_target_staff and not is_target_admin:
+        return (False, False)
+    
+    # Check if executor is owner
+    if is_owner(executor.id):
+        return (False, True)  # Not blocked, but is an owner override
+    
+    # Check if executor is admin (normal admin, not owner)
+    is_executor_admin = (
+        executor.guild_permissions.administrator
+        or any(r.id in settings.admin_role_ids for r in executor.roles)
+    )
+    
+    # Admins can moderate staff (but this is NOT an override, it's normal behavior)
+    if is_executor_admin:
+        return (False, False)
+    
+    # Non-admin staff cannot moderate other staff
+    return (True, False)
+
+
+async def log_owner_override(
+    bot: commands.Bot,
+    db,
+    *,
+    guild_id: int,
+    action_type: str,
+    target_user_id: int | None,
+    moderator_id: int,
+    executor_id: int,
+    reason: str | None = None,
+) -> None:
+    """Log an owner override action to the database."""
+    try:
+        await db.add_permission_override(
+            guild_id=guild_id,
+            action_type=action_type,
+            target_user_id=target_user_id,
+            moderator_id=moderator_id,
+            executor_id=executor_id,
+            reason=reason,
+            override_type="owner_bypass",
+        )
+    except Exception:
+        logger.exception("Failed to log owner override")
 
 
 async def safe_delete(message: discord.Message) -> None:
@@ -182,9 +340,9 @@ def make_embed(*, action: str, title: str, description: str | None = None) -> di
     return embed
 
 
-# Luna doesn't use GIFs - stub function for compatibility
-def attach_gif(embed: discord.Embed, *, gif_key: str) -> tuple[discord.Embed, None]:
-    """Stub function for GIF attachment (Luna doesn't use GIFs)."""
+def attach_gif(embed: discord.Embed, *, gif_key: str, filename: str = "action.gif") -> tuple[discord.Embed, discord.File | None]:
+    gif_url = config.get_gif_url(gif_key)
+    embed.set_image(url=gif_url)
     return embed, None
 
 
@@ -219,6 +377,55 @@ async def notify_owner(bot: commands.Bot, *, embed: discord.Embed = None, conten
             await owner.send(content=content)
     except Exception:
         logger.exception("Failed to notify owner")
+
+
+async def notify_owner_mod_action(
+    bot: commands.Bot,
+    *,
+    guild: discord.Guild,
+    action_type: str,
+    target: discord.User | discord.Member,
+    moderator: discord.User | discord.Member,
+    reason: str | None = None,
+    duration: str | None = None,
+) -> None:
+    """Notify owner about moderation actions."""
+    owner_id = config.OWNER_ID
+    if not owner_id:
+        return
+    
+    try:
+        owner = bot.get_user(owner_id) or await bot.fetch_user(owner_id)
+    except Exception:
+        logger.exception("Failed to fetch owner for mod action notification")
+        return
+    
+    timestamp_str = discord_timestamp(utcnow())
+    
+    description_parts = [
+        f"**Server:** {guild.name} (`{guild.id}`)",
+        f"**Action:** {action_type.title()}",
+        f"**Target:** {target.mention} (`{target.id}`)",
+        f"**Moderator:** {moderator.mention} (`{moderator.id}`)",
+    ]
+    
+    if reason:
+        description_parts.append(f"**Reason:** {reason}")
+    if duration:
+        description_parts.append(f"**Duration:** {duration}")
+    
+    description_parts.append(f"**Time:** {timestamp_str}")
+    
+    embed = make_embed(
+        action=action_type,
+        title=f"🔔 Moderation Action: {action_type.title()}",
+        description="\n".join(description_parts)
+    )
+    
+    try:
+        await safe_dm(owner, embed=embed)
+    except Exception:
+        logger.exception("Failed to notify owner of mod action")
 
 
 async def log_to_modlog_channel(
@@ -267,7 +474,7 @@ def commands_channel_check() -> commands.Check:
 
 
 def require_level(min_level: str) -> commands.Check:
-    levels = {"member": 0, "moderator": 1, "senior_mod": 2, "head_mod": 3, "admin": 4}
+    levels = {"member": 0, "trial_mod": 1, "moderator": 2, "senior_mod": 3, "head_mod": 4, "admin": 5}
 
     async def predicate(ctx: commands.Context) -> bool:
         if ctx.guild is None or not isinstance(ctx.author, discord.Member):
@@ -276,7 +483,8 @@ def require_level(min_level: str) -> commands.Check:
         if db is None:
             return False
         settings: GuildSettings = await db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
-        have = role_level_for_member(ctx.author, settings)
+        trial_mod_roles = await db.get_trial_mod_roles(ctx.guild.id)
+        have = role_level_for_member(ctx.author, settings, trial_mod_role_ids=trial_mod_roles)
         if levels[have] < levels[min_level]:
             embed = make_embed(action="error", title="No Permission", description="You don't have permission to use this command.")
             await ctx.send(embed=embed)
@@ -403,9 +611,9 @@ def clean_rate_limits() -> None:
         _ai_rate_limits.pop(user_id, None)
 
 
-def get_personality_prompt(personality: str = "professional") -> str:
+def get_personality_prompt(personality: str = "genz") -> str:
     """Get the system prompt for the specified personality."""
-    return config.AI_PERSONALITIES.get(personality, config.AI_PERSONALITIES["professional"])
+    return config.AI_PERSONALITIES.get(personality, config.AI_PERSONALITIES["genz"])
 
 
 def truncate_response(text: str, max_length: int = config.MAX_RESPONSE_LENGTH) -> str:
@@ -422,45 +630,52 @@ def truncate_response(text: str, max_length: int = config.MAX_RESPONSE_LENGTH) -
     return truncated + "..."
 
 
-async def call_gemini_api(user_message: str, personality: str = "professional") -> str:
-    """Call Gemini API to get AI response."""
-    if not config.GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY not configured")
-    
-    if not GEMINI_AVAILABLE:
-        raise ValueError("google-generativeai package not installed")
+async def call_huggingface_api(user_message: str, personality: str = "genz") -> str:
+    """Call HuggingFace API to get AI response."""
+    if not config.HUGGINGFACE_TOKEN:
+        raise ValueError("HUGGINGFACE_TOKEN not configured")
     
     try:
-        genai.configure(api_key=config.GEMINI_API_KEY)
-        model = genai.GenerativeModel(config.GEMINI_MODEL)
-        
-        system_prompt = get_personality_prompt(personality)
-        full_prompt = f"{system_prompt}\n\nUser message: {user_message}"
-        
-        logger.info(f"Calling Gemini with model: {config.GEMINI_MODEL}")
-        
-        # Generate response with timeout
-        response = await asyncio.wait_for(
-            asyncio.to_thread(model.generate_content, full_prompt),
-            timeout=config.AI_RESPONSE_TIMEOUT
+        client = InferenceClient(
+            model=config.HUGGINGFACE_MODEL,
+            token=config.HUGGINGFACE_TOKEN
         )
         
-        response_text = response.text.strip()
+        system_prompt = get_personality_prompt(personality)
         
-        return response_text if response_text else "Unable to generate response."
+        # Log the request
+        logger.info(f"Calling HuggingFace with model: {config.HUGGINGFACE_MODEL}")
         
-    except asyncio.TimeoutError:
-        logger.error("Gemini API timeout")
-        return "Response timeout. Please try again."
+        # Use chat.completions() instead of text_generation()
+        response = client.chat.completions(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            max_tokens=100,
+            temperature=0.8,
+            top_p=0.9,
+        )
+        
+        logger.info(f"HuggingFace response: {response}")
+        
+        # Extract text from response
+        if hasattr(response, 'choices') and response.choices:
+            response_text = response.choices[0].message.content.strip()
+        else:
+            response_text = str(response).strip()
+        
+        return response_text if response_text else "nah fr fr the vibes are off rn, try again bestie 😅"
+        
     except Exception as e:
-        logger.error(f"Gemini API error: {type(e).__name__}: {str(e)}", exc_info=True)
-        return "AI service unavailable. Please try again later."
+        logger.error(f"HuggingFace API error: {type(e).__name__}: {str(e)}", exc_info=True)
+        return "nah the AI service is down rn, try again later 💀"
 
 
-async def get_ai_response(user_message: str, personality: str = "professional") -> str:
+async def get_ai_response(user_message: str, personality: str = "genz") -> str:
     """Get AI response with proper formatting and safety."""
     try:
-        response = await call_gemini_api(user_message, personality)
+        response = await call_huggingface_api(user_message, personality)
         
         # Clean up the response
         response = response.strip()
@@ -471,7 +686,7 @@ async def get_ai_response(user_message: str, personality: str = "professional") 
         
         # Ensure response is not empty
         if not response:
-            response = "Unable to generate response."
+            response = "nah i got nothing rn, try asking something else 💭"
         
         # Truncate if needed
         response = truncate_response(response)
@@ -480,7 +695,7 @@ async def get_ai_response(user_message: str, personality: str = "professional") 
         
     except Exception as e:
         logger.error("AI response error: %s", e)
-        return "AI service unavailable."
+        return "nah the AI vibes are off rn, try again later 😅"
 
 
 async def is_ai_enabled_for_guild(guild_id: int, db) -> bool:
@@ -574,73 +789,3 @@ async def notify_owner_action(
     )
     
     await notify_owner(bot, embed=embed)
-
-
-# ---------------------------------------------------------------------------
-# Luna-specific Helpers
-# ---------------------------------------------------------------------------
-
-def is_helper_member(member: discord.Member, settings: GuildSettings) -> bool:
-    """Check if member has helper role."""
-    # Helpers are staff members in Luna
-    return is_staff_member(member, settings)
-
-
-def require_helper() -> commands.Check:
-    """Require helper role or higher."""
-    async def predicate(ctx: commands.Context) -> bool:
-        if ctx.guild is None or not isinstance(ctx.author, discord.Member):
-            return False
-        db = getattr(ctx.bot, "db", None)
-        if db is None:
-            return False
-        settings: GuildSettings = await db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
-        if not is_helper_member(ctx.author, settings):
-            embed = make_embed(action="error", title="❌ No Permission", description="This command requires helper role or higher.")
-            await ctx.send(embed=embed)
-            return False
-        return True
-    
-    return commands.check(predicate)
-
-
-def get_gmt8_now() -> datetime:
-    """Get current time in GMT+8."""
-    return datetime.now(timezone.utc) + timedelta(hours=8)
-
-
-def format_shift_time(dt: datetime) -> str:
-    """Format datetime for shift display."""
-    return dt.strftime("%Y-%m-%d %H:%M:%S GMT+8")
-
-
-def calculate_shift_hours(start_dt: datetime, end_dt: datetime, break_minutes: int = 0) -> float:
-    """Calculate hours worked in a shift."""
-    duration_seconds = (end_dt - start_dt).total_seconds()
-    break_seconds = break_minutes * 60
-    worked_seconds = duration_seconds - break_seconds
-    return max(0, worked_seconds / 3600)
-
-
-def get_week_identifier_gmt8(dt: datetime) -> str:
-    """Get week identifier (YYYY-WW) for GMT+8 timezone."""
-    # Convert to GMT+8
-    gmt8_dt = dt + timedelta(hours=8) if dt.tzinfo is None else dt.astimezone(timezone(timedelta(hours=8)))
-    year, week, _ = gmt8_dt.isocalendar()
-    return f"{year}-W{week:02d}"
-
-
-async def extract_dm_messages(bot: commands.Bot, user: discord.User, limit: int = 50) -> list[str]:
-    """Extract DM messages from a user (owner-only utility)."""
-    try:
-        dm_channel = await user.create_dm()
-        messages = []
-        async for msg in dm_channel.history(limit=limit):
-            timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-            author = "User" if msg.author.id == user.id else "Bot"
-            content = msg.content[:200] if msg.content else "[No content]"
-            messages.append(f"[{timestamp}] {author}: {content}")
-        return messages
-    except Exception as e:
-        logger.error(f"Failed to extract DM messages: {e}")
-        return []

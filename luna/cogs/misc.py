@@ -12,16 +12,14 @@ from discord.ext import commands
 import config
 from database import Database
 from helpers import (
-    Page,
-    PaginationView,
     add_loading_reaction,
     commands_channel_check,
+    discord_timestamp,
     log_to_modlog_channel,
     make_embed,
     require_level,
     safe_delete,
     timed_rest_call,
-    humanize_seconds,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,212 +31,44 @@ def _fmt_dt(dt: datetime | None) -> str:
     return discord.utils.format_dt(dt)
 
 
-def _chunk_commands(commands: list[str], size: int) -> list[list[str]]:
-    return [commands[i : i + size] for i in range(0, len(commands), size)]
+class HelpView(discord.ui.View):
+    def __init__(self, *, author_id: int, pages: dict[str, discord.Embed]) -> None:
+        super().__init__(timeout=180)
+        self.author_id = author_id
+        self.pages = pages
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user and interaction.user.id != self.author_id:
+            await interaction.response.send_message("This menu isn't for you.", ephemeral=True)
+            return False
+        return True
 
-def _build_help_pages(prefix: str) -> list[Page]:
-    sections: list[tuple[str, list[str]]] = [
-        (
-            "⚠️ Moderation Commands",
-            [
-                "warn <user> <reason>",
-                "delwarn <user> <warn_id>",
-                "warnings <user>",
-                "modlogs <user>",
-                "mute <user> <duration> [reason]",
-                "unmute <user> [reason]",
-                "kick <user> <reason>",
-                "ban <user> <reason>",
-                "unban <user> <reason>",
-                "wm <user> <duration> <reason>",
-                "wmr <duration> <reason>",
-                "masskick <users,users> <reason>",
-                "massban <users,users> <reason>",
-                "massmute <users,users> <duration> <reason>",
-                "imprison <user> <reason>",
-                "release <user> [reason]",
-            ],
-        ),
-        (
-            "📌 Role Commands",
-            [
-                "role <user> <role>",
-                "removerole <user> <role>",
-                "temprole <user> <role> <duration>",
-                "removetemp <user> <role>",
-                "persistrole <user> <role>",
-                "removepersist <user> <role>",
-                "massrole <users,users> <role>",
-                "massremoverole <users,users> <role>",
-                "masstemprole <users,users> <role> <duration>",
-                "massremovetemp <users,users> <role>",
-                "masspersistrole <users,users> <role>",
-                "massremovepersist <users,users> <role>",
-            ],
-        ),
-        (
-            "⏱️ Channel Commands",
-            [
-                "checkslowmode [channel]",
-                "setslowmode [channel] <duration>",
-                "massslow <channels,channels> <duration>",
-                "lock [channel]",
-                "unlock [channel]",
-                "hide [channel]",
-                "unhide [channel]",
-                "message <channel> <message>",
-                "editmess <message_id> <new_message>",
-                "replymess <message_id> <reply>",
-                "deletemess <message_id>",
-                "reactmess <message_id> <emoji>",
-            ],
-        ),
-        (
-            "🧹 Cleaning Commands",
-            [
-                "clean [amount]",
-                "purge <amount>",
-                "purgeuser <user> <amount>",
-                "purgematch <keyword> <amount>",
-            ],
-        ),
-        (
-            "👤 Member Commands",
-            [
-                "mywarns",
-                "myavatar",
-                "mybanner",
-                "myinfo",
-            ],
-        ),
-        (
-            "📋 Miscellaneous Commands",
-            [
-                "userinfo <user>",
-                "serverinfo",
-                "botinfo",
-                "checkavatar <user>",
-                "checkbanner <user>",
-                "members",
-                "ping",
-                "wasbanned <user>",
-                "checkdur <user>",
-                "changenick <user> <nickname>",
-                "removenick <user>",
-                "roleperms <role>",
-            ],
-        ),
-        (
-            "🤖 AI Commands",
-            [
-                "ai <question>",
-                "ai_settings",
-                "askai <question>",
-            ],
-        ),
-        (
-            "🛠️ Utility Commands",
-            [
-                "announce <channel> <message>",
-                "poll <question>",
-                "define <word>",
-                "translate <language> <text>",
-                "remindme <duration> <text>",
-                "reminders",
-                "deleteremind <id>",
-            ],
-        ),
-        (
-            "🕒 Shift Commands",
-            [
-                "manage_shift",
-            ],
-        ),
-        (
-            "📊 Stats Commands",
-            [
-                "ms [user]",
-                "staffstats",
-                "set_ms [user]",
-            ],
-        ),
-        (
-            "🏷️ Tag Commands",
-            [
-                "tag <category> <title>",
-                "tags [category]",
-                "tag_create <category> <title> <description>",
-                "tag_edit <category> <title> <description>",
-                "tag_delete <category> <title>",
-            ],
-        ),
-        (
-            "📬 Notification Commands",
-            [
-                "dmnotify status",
-                "dmnotify enable",
-                "dmnotify disable",
-                "dmnotify toggle <type>",
-                "dmnotify test [member]",
-                "optout",
-                "optin",
-            ],
-        ),
-        (
-            "🧭 Setup Commands",
-            [
-                "setup",
-                "adminsetup",
-            ],
-        ),
-        (
-            "🏛️ Admin Commands",
-            [
-                "adcmd",
-                "flag <staff_user> <reason>",
-                "unflag <staff_user> <strike_id>",
-                "terminate <staff_user> [reason]",
-                "lockchannels",
-                "unlockchannels",
-                "scanacc <user>",
-                "stafflist",
-                "wasstaff <user>",
-            ],
-        ),
-        (
-            "📊 Hierarchy Commands",
-            [
-                "hierarchy",
-                "promote <staff>",
-                "demote <staff>",
-            ],
-        ),
-        (
-            "📈 Promotion Commands",
-            [
-                "promotion list",
-                "promotion review <id> <approve/deny>",
-                "promotion analyze <member>",
-                "promotion stats <member>",
-            ],
-        ),
-    ]
+    async def _show(self, interaction: discord.Interaction, key: str) -> None:
+        await interaction.response.edit_message(embed=self.pages[key], view=self)
 
-    pages: list[Page] = []
-    for title, commands_list in sections:
-        chunks = _chunk_commands(commands_list, 8)
-        for chunk_index, chunk in enumerate(chunks, start=1):
-            suffix = f" ({chunk_index}/{len(chunks)})" if len(chunks) > 1 else ""
-            description = "\n".join(f"`{prefix}{command}`" for command in chunk)
-            embed = make_embed(action="help", title=f"{title}{suffix}", description=description)
-            pages.append(Page(embed=embed))
+    @discord.ui.button(label="⚠️ Moderation", style=discord.ButtonStyle.primary)
+    async def moderation(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
+        await self._show(interaction, "moderation")
 
-    total_pages = len(pages)
-    for index, page in enumerate(pages, start=1):
-        page.embed.set_footer(text=f"{config.BOT_NAME} • Page {index}/{total_pages}")
+    @discord.ui.button(label="📌 Roles", style=discord.ButtonStyle.primary)
+    async def roles(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
+        await self._show(interaction, "roles")
 
-    return pages
+    @discord.ui.button(label="⏱️ Channels", style=discord.ButtonStyle.primary)
+    async def channels(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
+        await self._show(interaction, "channels")
+
+    @discord.ui.button(label="📋 Miscellaneous", style=discord.ButtonStyle.primary)
+    async def misc(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
+        await self._show(interaction, "misc")
+
+    @discord.ui.button(label="🧹 Cleaning", style=discord.ButtonStyle.primary)
+    async def cleaning(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
+        await self._show(interaction, "cleaning")
+
+    @discord.ui.button(label="👤 Member", style=discord.ButtonStyle.primary)
+    async def member(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[override]
+        await self._show(interaction, "member")
 
 
 class MiscCog(commands.Cog):
@@ -368,6 +198,72 @@ class MiscCog(commands.Cog):
         embed.description = "\n".join(enabled) if enabled else "No enabled permissions."
         await ctx.send(embed=embed)
 
+    @commands.command(name="roleinfo")
+    @commands.guild_only()
+    @commands_channel_check()
+    @require_level("moderator")
+    async def roleinfo(self, ctx: commands.Context, role: discord.Role) -> None:
+        """Show detailed information about a role.
+
+        Usage: !roleinfo <role>
+        Shows: Creation date, color, permissions summary.
+        """
+        embed = make_embed(action="roleinfo", title=f"📋 Role Information - {role.name}")
+        embed.set_thumbnail(url=role.display_icon.url if role.display_icon else ctx.guild.icon.url if ctx.guild.icon else None)
+
+        # Basic info
+        embed.add_field(name="📍 Role ID", value=str(role.id), inline=True)
+        embed.add_field(name="👥 Members", value=str(len(role.members)), inline=True)
+        embed.add_field(name="📊 Position", value=str(role.position), inline=True)
+
+        # Creation date using Unix timestamp
+        embed.add_field(
+            name="📅 Created",
+            value=discord_timestamp(role.created_at, "f") + f"\n({discord_timestamp(role.created_at, 'R')})",
+            inline=False
+        )
+
+        # Color
+        color_hex = f"#{role.color.value:06X}"
+        color_preview = "⬜ Default" if role.color.value == 0 else f"🎨 {color_hex}"
+        embed.add_field(name="🎨 Color", value=color_preview, inline=True)
+
+        # Permissions
+        if role.permissions.administrator:
+            embed.add_field(name="🔐 Permissions", value="**Administrator Role** (All permissions)", inline=False)
+        else:
+            # Get key permissions
+            key_perms = []
+            perm_map = {
+                "manage_guild": "Manage Server",
+                "manage_channels": "Manage Channels",
+                "manage_roles": "Manage Roles",
+                "manage_messages": "Manage Messages",
+                "kick_members": "Kick Members",
+                "ban_members": "Ban Members",
+                "mention_everyone": "Mention @everyone",
+                "view_audit_log": "View Audit Log",
+                "moderate_members": "Timeout Members",
+            }
+
+            for perm_name, display_name in perm_map.items():
+                if getattr(role.permissions, perm_name, False):
+                    key_perms.append(display_name)
+
+            if key_perms:
+                perms_text = ", ".join(key_perms[:6])
+                if len(key_perms) > 6:
+                    perms_text += f" (+{len(key_perms) - 6} more)"
+                embed.add_field(name="🔐 Key Permissions", value=perms_text, inline=False)
+            else:
+                embed.add_field(name="🔐 Permissions", value="No key permissions enabled", inline=False)
+
+        # Hoisted and mentionable
+        embed.add_field(name="📌 Hoisted", value="Yes" if role.hoist else "No", inline=True)
+        embed.add_field(name="🔔 Mentionable", value="Yes" if role.mentionable else "No", inline=True)
+
+        await ctx.send(embed=embed)
+
     @commands.command(name="changenick")
     @commands.guild_only()
     @commands_channel_check()
@@ -415,7 +311,7 @@ class MiscCog(commands.Cog):
         embed = make_embed(action="wasbanned", title="📍 Ban History", description=f"👤 **{user}** was banned.")
         embed.add_field(name="📝 Reason", value=row["reason"], inline=False)
         embed.add_field(name="👮 Moderator", value=f"<@{row['moderator_id']}>", inline=True)
-        embed.add_field(name="📅 When", value=row["timestamp"], inline=True)
+        embed.add_field(name="📅 When", value=discord_timestamp(row["timestamp"], "f"), inline=True)
         await ctx.send(embed=embed)
 
     @commands.command(name="checkdur")
@@ -430,9 +326,8 @@ class MiscCog(commands.Cog):
             return
         now = discord.utils.utcnow()
         remaining = int((until - now).total_seconds())
-        remaining_str = humanize_seconds(max(0, remaining))
-        embed = make_embed(action="checkdur", title="⏱️ Timeout Duration", description=f"Remaining: **{remaining_str}**")
-        embed.add_field(name="📅 Ends", value=discord.utils.format_dt(until, style="R"), inline=False)
+        embed = make_embed(action="checkdur", title="⏱️ Timeout Duration", description=f"Remaining: **{max(0, remaining)}s**")
+        embed.add_field(name="📅 Ends", value=discord.utils.format_dt(until), inline=False)
         await ctx.send(embed=embed)
 
     @commands.command(name="ping")
@@ -497,6 +392,10 @@ class MiscCog(commands.Cog):
             from helpers import parse_duration
             duration_seconds = parse_duration(duration)
             
+            # Get current active warn count for this user to determine the display number
+            active_warnings = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)
+            warn_number = len(active_warnings) + 1
+            
             # Add warning
             warn_id = await self.db.add_warning(
                 guild_id=ctx.guild.id,
@@ -531,7 +430,7 @@ class MiscCog(commands.Cog):
             
             embed.add_field(
                 name="⚠️ Warning",
-                value=f"**Warning ID:** {warn_id}\n**Mute ID:** {mute_id}",
+                value=f"**Warn #{warn_number}** (DB: `{warn_id}`)\n**Mute ID:** `{mute_id}`",
                 inline=True
             )
             
@@ -586,11 +485,111 @@ class MiscCog(commands.Cog):
     @commands.guild_only()
     @commands_channel_check()
     async def help(self, ctx: commands.Context) -> None:
-        settings = await self.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)
-        prefix = settings.prefix or config.DEFAULT_PREFIX
-        pages = _build_help_pages(prefix)
-        view = PaginationView(pages=pages, author_id=ctx.author.id)
-        await ctx.send(embed=pages[0].embed, view=view)
+        prefix = (await self.db.get_guild_settings(ctx.guild.id, default_prefix=config.DEFAULT_PREFIX)).prefix  # type: ignore[union-attr]
+
+        pages: dict[str, discord.Embed] = {
+            "moderation": make_embed(
+                action="help",
+                title="📖 Moderation Commands",
+                description=(
+                    f"`{prefix}warn <user> <reason>`\n"
+                    f"`{prefix}delwarn <user> <warn_id>`\n"
+                    f"`{prefix}mute <user> <duration> [reason]`\n"
+                    f"`{prefix}unmute <user> [reason]`\n"
+                    f"`{prefix}kick <user> <reason>`\n"
+                    f"`{prefix}ban <user> <reason>`\n"
+                    f"`{prefix}unban <user> <reason>`\n"
+                    f"`{prefix}warnings <user>`\n"
+                    f"`{prefix}modlogs <user>`\n"
+                    f"`{prefix}wm <user> <duration> <reason>`\n"
+                    f"`{prefix}masskick <users,users> <reason>`\n"
+                    f"`{prefix}massban <users,users> <reason>`\n"
+                    f"`{prefix}massmute <users,users> <duration> <reason>`\n"
+                    f"`{prefix}imprison <user> <reason>`\n"
+                    f"`{prefix}release <user> [reason]`"
+                ),
+            ),
+            "roles": make_embed(
+                action="help",
+                title="Help - Roles",
+                description=(
+                    f"`{prefix}role <user> <role>`\n"
+                    f"`{prefix}removerole <user> <role>`\n"
+                    f"`{prefix}temprole <user> <role> <duration>`\n"
+                    f"`{prefix}removetemp <user> <role>`\n"
+                    f"`{prefix}persistrole <user> <role>`\n"
+                    f"`{prefix}removepersist <user> <role>`\n"
+                    f"`{prefix}massrole <users,users> <role>`\n"
+                    f"`{prefix}massremoverole <users,users> <role>`\n"
+                    f"`{prefix}masstemprole <users,users> <role> <duration>`\n"
+                    f"`{prefix}massremovetemp <users,users> <role>`\n"
+                    f"`{prefix}masspersistrole <users,users> <role>`\n"
+                    f"`{prefix}massremovepersist <users,users> <role>`"
+                ),
+            ),
+            "channels": make_embed(
+                action="help",
+                title="Help - Channels",
+                description=(
+                    f"`{prefix}checkslowmode [channel]`\n"
+                    f"`{prefix}setslowmode [channel] <duration>`\n"
+                    f"`{prefix}massslow <channels,channels> <duration>`\n"
+                    f"`{prefix}lock [channel]`\n"
+                    f"`{prefix}unlock [channel]`\n"
+                    f"`{prefix}hide [channel]`\n"
+                    f"`{prefix}unhide [channel]`\n"
+                    f"`{prefix}message <channel> <message>`\n"
+                    f"`{prefix}editmess <message_id> <new_message>`\n"
+                    f"`{prefix}replymess <message_id> <reply>`\n"
+                    f"`{prefix}deletemess <message_id>`"
+                ),
+            ),
+            "misc": make_embed(
+                action="help",
+                title="Help - Misc",
+                description=(
+                    f"`{prefix}userinfo <user>`\n"
+                    f"`{prefix}checkinfo <user>` - Check user's type, dates, warnings, mod stats\n"
+                    f"`{prefix}serverinfo`\n"
+                    f"`{prefix}botinfo`\n"
+                    f"`{prefix}roleinfo <role>` - Role creation date, color, permissions\n"
+                    f"`{prefix}roleperms <role>`\n"
+                    f"`{prefix}checkavatar <user>`\n"
+                    f"`{prefix}checkbanner <user>`\n"
+                    f"`{prefix}members`\n"
+                    f"`{prefix}ping`\n"
+                    f"`{prefix}wasbanned <user>`\n"
+                    f"`{prefix}checkdur <user>`\n"
+                    f"`{prefix}changenick <user> <nickname>`\n"
+                    f"`{prefix}removenick <user>`"
+                ),
+            ),
+            "cleaning": make_embed(
+                action="help",
+                title="Help - Cleaning",
+                description=(
+                    f"`{prefix}clean [amount]`\n"
+                    f"`{prefix}purge <amount>`\n"
+                    f"`{prefix}purgeuser <user> <amount>`\n"
+                    f"`{prefix}purgematch <keyword> <amount>`"
+                ),
+            ),
+            "member": make_embed(
+                action="help",
+                title="Help - Member",
+                description=(
+                    f"`{prefix}mywarns`\n"
+                    f"`{prefix}myavatar`\n"
+                    f"`{prefix}mybanner`\n"
+                    f"`{prefix}myinfo` - Your user type, trial status, join date, account age, warnings\n"
+                    f"`{prefix}myflags` - Staff only: view your flags and danger level\n"
+                    f"`{prefix}translate <text> [target_language]`"
+                ),
+            ),
+        }
+
+        view = HelpView(author_id=ctx.author.id, pages=pages)
+        await ctx.send(embed=pages["moderation"], view=view)
 
     @commands.command(name="adcmd")
     @commands.guild_only()
@@ -606,6 +605,7 @@ class MiscCog(commands.Cog):
                 f"**Staff Flagging ({config.MAX_STAFF_FLAGS}-Strike System)**\n"
                 f"`{prefix}flag <staff_user> <reason>` - Flag a staff member\n"
                 f"`{prefix}unflag <staff_user> <strike_id>` - Remove a flag\n"
+                f"`{prefix}checkflags <staff_member>` - Check a staff member's flags\n"
                 f"`{prefix}stafflist` - View all staff with strike counts\n"
                 f"⚠️ **{config.MAX_STAFF_FLAGS} flags = auto-termination**\n"
                 f"📅 Flags expire after {settings.flag_duration} days\n\n"
@@ -617,7 +617,6 @@ class MiscCog(commands.Cog):
                 f"`{prefix}terminate <staff_user>` - Manually terminate staff\n"
                 f"`{prefix}lockchannels` - Lock all configured categories\n"
                 f"`{prefix}unlockchannels` - Unlock all configured categories\n"
-                f"`{prefix}timeoutpanel` - Manage prohibited terms and timeout settings\n"
                 f"`{prefix}scanacc <user>` - Scan account for suspicious activity\n"
                 f"`{prefix}wasstaff <user>` - Check staff history"
             ),

@@ -9,8 +9,7 @@ import discord
 from discord.ext import commands
 
 from database import Database
-from helpers import make_embed, require_owner, safe_dm, get_ai_response, extract_dm_messages
-import config
+from helpers import make_embed, require_owner, safe_dm
 
 logger = logging.getLogger(__name__)
 
@@ -112,92 +111,285 @@ class OwnerCog(commands.Cog):
         embed = make_embed(action="success", title="💣 Channel Nuked", description=f"Deleted **{deleted}** messages.")
         await ctx.send(embed=embed)
     
-    @commands.command(name="ai_target")
-    @commands.guild_only()
+    @commands.command(name="setbotav")
     @require_owner()
-    async def ai_target(self, ctx: commands.Context, user: discord.Member, *, notes: str = "No notes") -> None:
-        """Target a user for AI roasting and trolling (Owner only).
+    async def set_bot_avatar(self, ctx: commands.Context, url: str | None = None) -> None:
+        """Set bot avatar from URL or attachment.
         
-        Usage:
-        ,ai_target @user [notes]
+        Usage: !setbotav <url> or attach an image
         """
-        # Add to AI targets
-        await self.db.add_ai_target(
-            user_id=user.id,
-            guild_id=ctx.guild.id,
-            target_by=ctx.author.id,
-            notes=notes
-        )
-        
-        embed = make_embed(
-            action="success",
-            title="🤖 AI Targeting Enabled",
-            description=f"**Target:** {user.mention}\n**Notes:** {notes}\n\nLuna will now randomly roast and troll this user."
-        )
-        await ctx.send(embed=embed)
+        try:
+            if url:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        if resp.status != 200:
+                            embed = make_embed(action="error", title="❌ Error", description="Failed to download image from URL.")
+                            await ctx.send(embed=embed)
+                            return
+                        avatar_bytes = await resp.read()
+            elif ctx.message.attachments:
+                avatar_bytes = await ctx.message.attachments[0].read()
+            else:
+                embed = make_embed(action="error", title="❌ Error", description="Provide a URL or attach an image.")
+                await ctx.send(embed=embed)
+                return
+            
+            await self.bot.user.edit(avatar=avatar_bytes)
+            embed = make_embed(action="success", title="✅ Avatar Updated", description="Bot avatar has been updated successfully.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set avatar: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set avatar: {e}")
+            await ctx.send(embed=embed)
     
-    @commands.command(name="ai_stop")
-    @commands.guild_only()
+    @commands.command(name="setbotbanner")
     @require_owner()
-    async def ai_stop(self, ctx: commands.Context, user: discord.Member) -> None:
-        """Stop AI targeting for a user (Owner only).
+    async def set_bot_banner(self, ctx: commands.Context, url: str | None = None) -> None:
+        """Set bot banner from URL or attachment.
         
-        Usage:
-        ,ai_stop @user
+        Usage: !setbotbanner <url> or attach an image
         """
-        await self.db.remove_ai_target(user_id=user.id, guild_id=ctx.guild.id)
-        
-        embed = make_embed(
-            action="success",
-            title="🤖 AI Targeting Disabled",
-            description=f"Stopped targeting {user.mention}."
-        )
-        await ctx.send(embed=embed)
+        try:
+            if url:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        if resp.status != 200:
+                            embed = make_embed(action="error", title="❌ Error", description="Failed to download image from URL.")
+                            await ctx.send(embed=embed)
+                            return
+                        banner_bytes = await resp.read()
+            elif ctx.message.attachments:
+                banner_bytes = await ctx.message.attachments[0].read()
+            else:
+                embed = make_embed(action="error", title="❌ Error", description="Provide a URL or attach an image.")
+                await ctx.send(embed=embed)
+                return
+            
+            await self.bot.user.edit(banner=banner_bytes)
+            embed = make_embed(action="success", title="✅ Banner Updated", description="Bot banner has been updated successfully.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set banner: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set banner: {e}")
+            await ctx.send(embed=embed)
     
-    @commands.command(name="extract_dms")
+    @commands.command(name="setbotname")
     @require_owner()
-    async def extract_dms(self, ctx: commands.Context, user: discord.User, limit: int = 50) -> None:
-        """Extract DM history with a user (Owner only).
+    async def set_bot_name(self, ctx: commands.Context, *, name: str) -> None:
+        """Set bot's display name.
         
-        Usage:
-        ,extract_dms @user [limit]
+        Usage: !setbotname <name>
         """
-        embed = make_embed(
-            action="info",
-            title="📥 Extracting DMs",
-            description="Fetching DM history..."
-        )
-        msg = await ctx.send(embed=embed)
+        try:
+            await self.bot.user.edit(username=name)
+            embed = make_embed(action="success", title="✅ Name Updated", description=f"Bot name changed to **{name}**.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set name: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set name: {e}")
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="setstatus")
+    @require_owner()
+    async def set_status(self, ctx: commands.Context, status: str) -> None:
+        """Set bot status.
         
-        messages = await extract_dm_messages(self.bot, user, limit)
+        Usage: !setstatus <online/idle/dnd/invisible>
+        """
+        status_map = {
+            "online": discord.Status.online,
+            "idle": discord.Status.idle,
+            "dnd": discord.Status.dnd,
+            "invisible": discord.Status.invisible
+        }
         
-        if not messages:
-            embed = make_embed(
-                action="error",
-                title="❌ No DMs Found",
-                description="No DM history found with this user."
-            )
-            await msg.edit(embed=embed)
+        if status.lower() not in status_map:
+            embed = make_embed(action="error", title="❌ Invalid Status", description="Valid options: online, idle, dnd, invisible")
+            await ctx.send(embed=embed)
             return
         
-        # Save to file
-        content = "\n".join(messages)
-        filename = f"dm_extract_{user.id}.txt"
+        try:
+            await self.bot.change_presence(status=status_map[status.lower()])
+            embed = make_embed(action="success", title="✅ Status Updated", description=f"Status set to **{status}**.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set status: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set status: {e}")
+            await ctx.send(embed=embed)
+    
+    @commands.command(name="setactivity")
+    @require_owner()
+    async def set_activity(self, ctx: commands.Context, activity_type: str, *, text: str) -> None:
+        """Set bot activity.
         
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(f"DM Extract for {user} ({user.id})\n")
-            f.write("=" * 50 + "\n\n")
-            f.write(content)
+        Usage: !setactivity <playing/watching/listening> <text>
+        """
+        activity_map = {
+            "playing": discord.ActivityType.playing,
+            "watching": discord.ActivityType.watching,
+            "listening": discord.ActivityType.listening
+        }
         
-        embed = make_embed(
-            action="success",
-            title="✅ DMs Extracted",
-            description=f"Extracted {len(messages)} messages with {user.mention}"
-        )
-        await msg.edit(embed=embed)
+        if activity_type.lower() not in activity_map:
+            embed = make_embed(action="error", title="❌ Invalid Activity", description="Valid options: playing, watching, listening")
+            await ctx.send(embed=embed)
+            return
         
-        # Send file
-        await ctx.send(file=discord.File(filename))
+        try:
+            activity = discord.Activity(type=activity_map[activity_type.lower()], name=text)
+            await self.bot.change_presence(activity=activity)
+            embed = make_embed(action="success", title="✅ Activity Updated", description=f"Activity set to **{activity_type} {text}**.")
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to set activity: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to set activity: {e}")
+            await ctx.send(embed=embed)
+
+    # -------------------------------------------------------------------------
+    # Owner Override Audit Commands
+    # -------------------------------------------------------------------------
+
+    @commands.command(name="overrideaudit")
+    @require_owner()
+    async def override_audit(self, ctx: commands.Context, guild_id: int | None = None, limit: int = 20) -> None:
+        """View permission override audit logs.
+        
+        Usage: !overrideaudit [guild_id] [limit]
+        """
+        try:
+            logs = await self.db.get_override_logs(
+                guild_id=guild_id,
+                limit=min(limit, 100)  # Max 100 entries
+            )
+            
+            if not logs:
+                embed = make_embed(
+                    action="overrideaudit",
+                    title="📋 Override Audit Log",
+                    description="No override logs found."
+                )
+                await ctx.send(embed=embed)
+                return
+            
+            embed = make_embed(
+                action="overrideaudit",
+                title=f"📋 Override Audit Log ({len(logs)} entries)",
+                description="Recent owner immunity overrides:"
+            )
+            
+            for log in logs[:10]:  # Show up to 10 in embed
+                guild = self.bot.get_guild(log.guild_id)
+                guild_name = guild.name if guild else f"Unknown ({log.guild_id})"
+                
+                target_str = f"<@{log.target_user_id}>" if log.target_user_id else "N/A"
+                
+                value = (
+                    f"**Guild:** {guild_name}\n"
+                    f"**Target:** {target_str}\n"
+                    f"**Action:** {log.action_type}\n"
+                    f"**Reason:** {log.reason or 'No reason provided'}\n"
+                    f"**Time:** {log.timestamp[:19]}"
+                )
+                
+                embed.add_field(
+                    name=f"Override #{log.id}",
+                    value=value,
+                    inline=False
+                )
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Failed to get override audit: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to retrieve audit logs: {e}")
+            await ctx.send(embed=embed)
+
+    @commands.command(name="overridestats")
+    @require_owner()
+    async def override_stats(self, ctx: commands.Context, days: int = 30) -> None:
+        """Show permission override statistics.
+        
+        Usage: !overridestats [days]
+        """
+        try:
+            stats = await self.db.get_override_stats(days=days)
+            
+            embed = make_embed(
+                action="overridestats",
+                title=f"📊 Override Statistics (Past {days} days)",
+                description=f"**Total Overrides:** {stats['total']}"
+            )
+            
+            if stats['by_action']:
+                action_breakdown = "\n".join(
+                    f"• {action}: {count}"
+                    for action, count in sorted(stats['by_action'].items(), key=lambda x: x[1], reverse=True)
+                )
+                embed.add_field(
+                    name="By Action Type",
+                    value=action_breakdown or "No data",
+                    inline=False
+                )
+            
+            if stats['by_executor']:
+                executor_breakdown = "\n".join(
+                    f"• <@{executor_id}>: {count}"
+                    for executor_id, count in sorted(stats['by_executor'].items(), key=lambda x: x[1], reverse=True)
+                )
+                embed.add_field(
+                    name="By Executor",
+                    value=executor_breakdown or "No data",
+                    inline=False
+                )
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Failed to get override stats: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to retrieve statistics: {e}")
+            await ctx.send(embed=embed)
+
+    @commands.command(name="overrideguilds")
+    @require_owner()
+    async def override_guilds(self, ctx: commands.Context) -> None:
+        """Show guilds with permission overrides.
+        
+        Usage: !overrideguilds
+        """
+        try:
+            guilds = await self.db.get_guilds_with_overrides()
+            
+            if not guilds:
+                embed = make_embed(
+                    action="overrideguilds",
+                    title="🏰 Guilds with Overrides",
+                    description="No guilds have recorded permission overrides."
+                )
+                await ctx.send(embed=embed)
+                return
+            
+            lines = []
+            for g in guilds[:20]:  # Show top 20
+                guild = self.bot.get_guild(g['guild_id'])
+                guild_name = guild.name if guild else f"Unknown ({g['guild_id']})"
+                lines.append(
+                    f"• **{guild_name}** - {g['override_count']} overrides (last: {g['last_override'][:10]})"
+                )
+            
+            embed = make_embed(
+                action="overrideguilds",
+                title=f"🏰 Guilds with Overrides ({len(guilds)} total)",
+                description="\n".join(lines) if lines else "No data"
+            )
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Failed to get override guilds: {e}")
+            embed = make_embed(action="error", title="❌ Error", description=f"Failed to retrieve guild list: {e}")
+            await ctx.send(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:

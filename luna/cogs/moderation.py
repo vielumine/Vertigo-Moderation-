@@ -17,18 +17,21 @@ from helpers import (
     attach_gif,
     can_bot_act_on,
     can_moderator_act_on,
+    check_staff_immunity_with_override,
     commands_channel_check,
+    discord_timestamp,
     extract_id,
     humanize_seconds,
+    log_owner_override,
     log_to_modlog_channel,
     make_embed,
     notify_owner,
+    notify_owner_action,
     parse_duration,
     require_level,
     safe_delete,
     safe_dm,
 )
-from services.notification_service import ModActionNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -75,23 +78,23 @@ class ModerationUndoView(discord.ui.View):
             return False
         return True
     
-    @discord.ui.button(label="Undo Warn", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Warn", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_warn_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_warn(interaction)
     
-    @discord.ui.button(label="Undo Mute", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Mute", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_mute_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_mute(interaction)
     
-    @discord.ui.button(label="Undo Warn Only", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Warn Only", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_warn_only_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_warn(interaction)
     
-    @discord.ui.button(label="Undo Mute Only", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Mute Only", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_mute_only_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_mute(interaction)
     
-    @discord.ui.button(label="Undo Warn & Mute", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Warn & Mute", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_both_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         # We need to defer because we might do multiple responses or it might take time
         await interaction.response.defer(ephemeral=True)
@@ -107,7 +110,7 @@ class ModerationUndoView(discord.ui.View):
         else:
             await interaction.followup.send("❌ Failed to undo actions.", ephemeral=True)
     
-    @discord.ui.button(label="Undo Ban", style=discord.ButtonStyle.secondary, emoji="↩️")
+    @discord.ui.button(label="Undo Ban", style=discord.ButtonStyle.danger, emoji="↩️")
     async def undo_ban_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._undo_ban(interaction)
     
@@ -228,12 +231,192 @@ class ModerationUndoView(discord.ui.View):
             await interaction.response.send_message("❌ Failed to undo ban.", ephemeral=True)
 
 
+class EditReasonModal(discord.ui.Modal, title="Edit Warning Reason"):
+    """Modal for editing a warning reason."""
+    
+    new_reason = discord.ui.TextInput(
+        label="New Reason",
+        style=discord.TextStyle.paragraph,
+        placeholder="Enter the new reason for this warning...",
+        required=True,
+        max_length=500,
+        min_length=1
+    )
+    
+    def __init__(self, warn_id: int, guild_id: int, member: discord.Member, original_reason: str):
+        super().__init__()
+        self.warn_id = warn_id
+        self.guild_id = guild_id
+        self.member = member
+        self.original_reason = original_reason
+    
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        new_reason = self.new_reason.value.strip()
+        
+        # Validate new reason
+        if not new_reason:
+            await interaction.response.send_message("❌ Reason cannot be empty.", ephemeral=True)
+            return
+        
+        if new_reason == self.original_reason:
+            await interaction.response.send_message("❌ New reason is the same as the original reason.", ephemeral=True)
+            return
+        
+        try:
+            # Update the warning reason in the database
+            await interaction.client.db.update_warning_reason(
+                warn_id=self.warn_id,
+                guild_id=self.guild_id,
+                new_reason=new_reason
+            )
+            
+            # Log the edit action
+            await interaction.client.db.add_modlog(
+                guild_id=self.guild_id,
+                action_type="warn_edit",
+                user_id=self.member.id,
+                moderator_id=interaction.user.id,
+                reason=f"Edited warn {self.warn_id}: '{self.original_reason}' → '{new_reason}'"
+            )
+            
+            embed = make_embed(
+                action="warnings",
+                title="✅ Warning Reason Updated",
+                description=f"Updated reason for warning `#{self.warn_id}` for {self.member.mention}."
+            )
+            embed.add_field(name="Original Reason", value=self.original_reason[:1000] if len(self.original_reason) <= 1000 else self.original_reason[:997] + "...", inline=False)
+            embed.add_field(name="New Reason", value=new_reason[:1000] if len(new_reason) <= 1000 else new_reason[:997] + "...", inline=False)
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error updating warning reason: {e}")
+            await interaction.response.send_message("❌ Failed to update warning reason. Please try again.", ephemeral=True)
+
+
+class EditReasonSelect(discord.ui.Select):
+    """Select menu for choosing which warning to edit."""
+    
+    def __init__(self, warnings: list, member: discord.Member, author_id: int):
+        self.member = member
+        self.author_id = author_id
+        
+        # Create options from warnings (max 25 options)
+        options = []
+        for idx, row in enumerate(warnings[:25], start=1):
+            reason = row['reason']
+            truncated_reason = (reason[:50] + "...") if len(reason) > 50 else reason
+            options.append(
+                discord.SelectOption(
+                    label=f"Warn #{idx} - {truncated_reason}",
+                    value=str(row['id']),
+                    description=f"ID: {row['id']} - Click to edit reason"
+                )
+            )
+        
+        super().__init__(
+            placeholder="Select a warning to edit...",
+            options=options,
+            min_values=1,
+            max_values=1
+        )
+    
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("This menu isn't for you.", ephemeral=True)
+            return
+        
+        selected_warn_id = int(self.values[0])
+        
+        # Find the selected warning
+        selected_warning = None
+        for row in self.warnings:
+            if row['id'] == selected_warn_id:
+                selected_warning = row
+                break
+        
+        if not selected_warning:
+            await interaction.response.send_message("❌ Warning not found. It may have been removed or expired.", ephemeral=True)
+            return
+        
+        # Show the modal to edit the reason
+        modal = EditReasonModal(
+            warn_id=selected_warn_id,
+            guild_id=interaction.guild.id,
+            member=self.member,
+            original_reason=selected_warning['reason']
+        )
+        await interaction.response.send_modal(modal)
+
+
+class EditReasonView(discord.ui.View):
+    """View containing the edit reason select menu."""
+    
+    def __init__(self, warnings: list, member: discord.Member, author_id: int):
+        super().__init__(timeout=180)
+        self.warnings = warnings
+        self.member = member
+        self.author_id = author_id
+        
+        # Add the select menu
+        self.select_menu = EditReasonSelect(warnings, member, author_id)
+        self.select_menu.warnings = warnings  # Pass warnings to the select
+        self.add_item(self.select_menu)
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("This menu isn't for you.", ephemeral=True)
+            return False
+        return True
+
+
+class WarningsWithEditView(discord.ui.View):
+    """Pagination view with edit reason button for warnings."""
+    
+    def __init__(self, pages: list[Page], warnings: list, member: discord.Member, author_id: int, timeout: float = 180):
+        super().__init__(timeout=timeout)
+        self.pages = pages
+        self.warnings = warnings
+        self.member = member
+        self.author_id = author_id
+        self.index = 0
+        
+        # Set initial button states
+        self.prev_button.disabled = len(pages) <= 1
+        self.next_button.disabled = len(pages) <= 1
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("This menu isn't for you.", ephemeral=True)
+            return False
+        return True
+    
+    async def _render(self, interaction: discord.Interaction) -> None:
+        page = self.pages[self.index]
+        await interaction.response.edit_message(embed=page.embed, attachments=[page.file] if page.file else [], view=self)
+    
+    @discord.ui.button(label="Prev", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.index = (self.index - 1) % len(self.pages)
+        await self._render(interaction)
+    
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.index = (self.index + 1) % len(self.pages)
+        await self._render(interaction)
+    
+    @discord.ui.button(label="Edit Reason", style=discord.ButtonStyle.primary, emoji="✏️")
+    async def edit_reason_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        # Show the edit reason view with select menu
+        edit_view = EditReasonView(self.warnings, self.member, self.author_id)
+        await interaction.response.send_message("Select a warning to edit:", view=edit_view, ephemeral=True)
+
+
 class ModerationCog(commands.Cog):
     """Moderator+ commands."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.notifier = ModActionNotifier(bot, bot.db)  # type: ignore[attr-defined]
 
     @property
     def db(self) -> Database:
@@ -242,33 +425,56 @@ class ModerationCog(commands.Cog):
     async def _settings(self, guild: discord.Guild) -> GuildSettings:
         return await self.db.get_guild_settings(guild.id, default_prefix=config.DEFAULT_PREFIX)
 
-    async def _blocked_by_staff_immunity(self, ctx: commands.Context, target: discord.Member) -> bool:
+    async def _blocked_by_staff_immunity(self, ctx: commands.Context, target: discord.Member) -> tuple[bool, bool]:
+        """Check if action is blocked by staff immunity.
+        
+        Returns:
+            tuple: (is_blocked, is_owner_override)
+        """
         settings = await self._settings(ctx.guild)  # type: ignore[arg-type]
         if not isinstance(ctx.author, discord.Member):
-            return True
-        if target.guild_permissions.administrator:
-            return True
-        staff_ids = set(settings.staff_role_ids + settings.head_mod_role_ids + settings.senior_mod_role_ids + settings.moderator_role_ids)
-        is_staff = any(r.id in staff_ids for r in target.roles)
-        if is_staff and not (ctx.author.guild_permissions.administrator or any(r.id in settings.admin_role_ids for r in ctx.author.roles)):
+            return (True, False)
+        
+        trial_mod_roles = await self.db.get_trial_mod_roles(ctx.guild.id)
+        
+        is_blocked, is_owner_override = check_staff_immunity_with_override(
+            executor=ctx.author,
+            target=target,
+            settings=settings,
+            trial_mod_role_ids=trial_mod_roles,
+        )
+        
+        if is_blocked:
             embed = make_embed(action="error", title="❌ Cannot Moderate Staff", description=f"@{target.name} is a staff member, I will not do that.")
             await ctx.send(embed=embed)
-            return True
-        return False
+        
+        return (is_blocked, is_owner_override)
 
     # ----------------------------- Basic moderation -----------------------------
 
     @commands.command(name="warn")
     @commands.guild_only()
     @commands_channel_check()
-    @require_level("moderator")
+    @require_level("trial_mod")
     async def warn(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
         """Warn a member."""
 
-        if await self._blocked_by_staff_immunity(ctx, member):
+        is_blocked, is_owner_override = await self._blocked_by_staff_immunity(ctx, member)
+        if is_blocked:
             return
 
         settings = await self._settings(ctx.guild)  # type: ignore[arg-type]
+
+        dm_embed = make_embed(
+            action="warn",
+            title=f"⚠️ You were warned in {ctx.guild.name}",
+            description=f"📝 Reason: {reason}",
+        )
+        await safe_dm(member, embed=dm_embed)
+
+        # Get current active warn count for this user to determine the display number
+        active_warnings = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)  # type: ignore[union-attr]
+        warn_number = len(active_warnings) + 1
 
         warn_id = await self.db.add_warning(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -278,27 +484,21 @@ class ModerationCog(commands.Cog):
             warn_days=settings.warn_duration,
         )
 
-        # Get active warnings count for notification
-        active_warns = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)  # type: ignore[union-attr]
-        active_warns_count = len(active_warns)
-
-        # Send enhanced DM notification via notification service
-        await self.notifier.send_warn_notification(
-            user=member,
-            guild=ctx.guild,  # type: ignore[arg-type]
-            reason=reason,
-            warn_id=warn_id,
-            moderator=ctx.author,  # type: ignore[arg-type]
-            warn_duration=settings.warn_duration,
-            active_warns_count=active_warns_count
-        )
-
+        # Calculate expiry time for Discord timestamp
+        from datetime import timedelta
+        expires_at = discord.utils.utcnow() + timedelta(days=settings.warn_duration)
+        
+        # Build embed title with override indicator if applicable
+        title = "⚠️ User Warned"
+        if is_owner_override:
+            title = "⚠️👑 User Warned (Owner Override)"
+        
         embed = make_embed(
             action="warn",
-            title="⚠️ User Warned",
-            description=f"👤 {member.mention} has been warned.\n\n📝 **Reason:** {reason}\n📍 **Warn ID:** `{warn_id}`",
+            title=title,
+            description=f"👤 {member.mention} has been warned.\n\n📝 **Reason:** {reason}\n📍 **Warn #{warn_number}** (DB: `{warn_id}`)",
         )
-        embed.add_field(name="⏱️ Expires", value=f"In {settings.warn_duration} days", inline=True)
+        embed.add_field(name="⏱️ Expires", value=discord.utils.format_dt(expires_at, 'R'), inline=True)
         embed.add_field(name="👮 Moderator", value=ctx.author.mention, inline=True)
         embed, file = attach_gif(embed, gif_key="WARN")
 
@@ -324,12 +524,31 @@ class ModerationCog(commands.Cog):
         # Track mod stat
         await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="warns")
 
-        owner_embed = make_embed(
+        # Log owner override if applicable
+        if is_owner_override:
+            await log_owner_override(
+                self.bot,
+                self.db,
+                guild_id=ctx.guild.id,  # type: ignore[union-attr]
+                action_type="warn",
+                target_user_id=member.id,
+                moderator_id=ctx.author.id,
+                executor_id=ctx.author.id,
+                reason=reason,
+            )
+
+        # Notify owner of the action
+        await notify_owner_action(
+            self.bot,
             action="warn",
-            title="Staff Action: warn",
-            description=f"Guild: **{ctx.guild.name}** (`{ctx.guild.id}`)\nUser: {member} (`{member.id}`)\nModerator: {ctx.author} (`{ctx.author.id}`)\nReason: {reason}",
+            guild_name=ctx.guild.name,
+            guild_id=ctx.guild.id,
+            target=str(member),
+            target_id=member.id,
+            moderator=str(ctx.author),
+            moderator_id=ctx.author.id,
+            reason=reason
         )
-        await notify_owner(self.bot, embed=owner_embed)
 
         await safe_delete(ctx.message)
 
@@ -382,7 +601,7 @@ class ModerationCog(commands.Cog):
     @commands.command(name="warnings")
     @commands.guild_only()
     @commands_channel_check()
-    @require_level("moderator")
+    @require_level("trial_mod")
     async def warnings(self, ctx: commands.Context, member: discord.Member) -> None:
         """List active warnings."""
 
@@ -399,15 +618,18 @@ class ModerationCog(commands.Cog):
             embed = make_embed(action="warnings", title=f"⚠️ Active Warnings - {member}")
             for idx, row in enumerate(chunk, start=i + 1):
                 mod = f"<@{row['moderator_id']}>" if row["moderator_id"] else "Unknown"
+                timestamp_str = discord_timestamp(row['timestamp'], 'f')
+                expires_str = discord_timestamp(row['expires_at'], 'R')
                 embed.add_field(
-                    name=f"📍 ID #{idx}",
-                    value=f"📝 **Reason:** {row['reason']}\n👮 **Moderator:** {mod}\n🕒 **Date:** {row['timestamp']}",
+                    name=f"📍 Warn #{idx}",
+                    value=f"📝 **Reason:** {row['reason']}\n👮 **Moderator:** {mod}\n🕒 **Date:** {timestamp_str}\n⏱️ **Expires:** {expires_str}",
                     inline=False,
                 )
             pages.append(Page(embed=embed))
 
-        view = PaginationView(pages=pages, author_id=ctx.author.id)
-        await ctx.send(embed=pages[0].embed, view=view)
+        # Create view with pagination and edit reason button
+        edit_view = WarningsWithEditView(pages=pages, warnings=rows, member=member, author_id=ctx.author.id)
+        await ctx.send(embed=pages[0].embed, view=edit_view)
 
     @commands.command(name="modlogs")
     @commands.guild_only()
@@ -430,8 +652,9 @@ class ModerationCog(commands.Cog):
             for row in chunk:
                 mod = f"<@{row['moderator_id']}>" if row["moderator_id"] else "Unknown"
                 reason = row["reason"] or "(no reason)"
+                timestamp_str = discord_timestamp(row['timestamp'], 'f')
                 embed.add_field(
-                    name=f"{row['action_type']} | {row['timestamp']}",
+                    name=f"{row['action_type']} | {timestamp_str}",
                     value=f"👮 Moderator: {mod}\n📝 Reason: {reason}",
                     inline=False,
                 )
@@ -443,16 +666,23 @@ class ModerationCog(commands.Cog):
     @commands.command(name="mute")
     @commands.guild_only()
     @commands_channel_check()
-    @require_level("moderator")
+    @require_level("trial_mod")
     async def mute(self, ctx: commands.Context, member: discord.Member, duration: str, *, reason: str = "No reason provided") -> None:
         """Timeout (mute) a user."""
 
-        if await self._blocked_by_staff_immunity(ctx, member):
+        is_blocked, is_owner_override = await self._blocked_by_staff_immunity(ctx, member)
+        if is_blocked:
             return
 
         seconds = parse_duration(duration)
         until = discord.utils.utcnow() + timedelta(seconds=seconds)
-        duration_text = humanize_seconds(seconds)
+
+        dm_embed = make_embed(
+            action="mute",
+            title=f"🔇 You were muted in {ctx.guild.name}",
+            description=f"⏱️ Duration: {humanize_seconds(seconds)}\n📝 Reason: {reason}",
+        )
+        await safe_dm(member, embed=dm_embed)
 
         try:
             await member.timeout(until, reason=reason)
@@ -469,19 +699,15 @@ class ModerationCog(commands.Cog):
             duration_seconds=seconds,
         )
 
-        # Send enhanced DM notification via notification service
-        await self.notifier.send_mute_notification(
-            user=member,
-            guild=ctx.guild,  # type: ignore[arg-type]
-            reason=reason,
-            duration=duration_text,
-            moderator=ctx.author  # type: ignore[arg-type]
-        )
+        # Build embed title with override indicator if applicable
+        title = "🔇 User Muted"
+        if is_owner_override:
+            title = "🔇👑 User Muted (Owner Override)"
 
         embed = make_embed(
             action="mute",
-            title="🔇 User Muted",
-            description=f"👤 {member.mention} has been muted for **{duration_text}**.\n\n📝 **Reason:** {reason}",
+            title=title,
+            description=f"👤 {member.mention} has been muted for **{humanize_seconds(seconds)}**.\n\n📝 **Reason:** {reason}",
         )
         embed.add_field(name="👮 Moderator", value=ctx.author.mention, inline=True)
         embed, file = attach_gif(embed, gif_key="MUTE")
@@ -507,12 +733,32 @@ class ModerationCog(commands.Cog):
         # Track mod stat
         await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="mutes")
 
-        owner_embed = make_embed(
+        # Log owner override if applicable
+        if is_owner_override:
+            await log_owner_override(
+                self.bot,
+                self.db,
+                guild_id=ctx.guild.id,  # type: ignore[union-attr]
+                action_type="mute",
+                target_user_id=member.id,
+                moderator_id=ctx.author.id,
+                executor_id=ctx.author.id,
+                reason=reason,
+            )
+
+        # Notify owner of the action
+        await notify_owner_action(
+            self.bot,
             action="mute",
-            title="Staff Action: mute",
-            description=f"Guild: **{ctx.guild.name}** (`{ctx.guild.id}`)\nUser: {member} (`{member.id}`)\nModerator: {ctx.author} (`{ctx.author.id}`)\nDuration: {humanize_seconds(seconds)}\nReason: {reason}",
+            guild_name=ctx.guild.name,
+            guild_id=ctx.guild.id,
+            target=str(member),
+            target_id=member.id,
+            moderator=str(ctx.author),
+            moderator_id=ctx.author.id,
+            reason=reason,
+            duration=humanize_seconds(seconds)
         )
-        await notify_owner(self.bot, embed=owner_embed)
 
         await safe_delete(ctx.message)
 
@@ -565,16 +811,16 @@ class ModerationCog(commands.Cog):
     async def kick(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
         """Kick a member."""
 
-        if await self._blocked_by_staff_immunity(ctx, member):
+        is_blocked, is_owner_override = await self._blocked_by_staff_immunity(ctx, member)
+        if is_blocked:
             return
 
-        # Send enhanced DM notification via notification service (before kick)
-        await self.notifier.send_kick_notification(
-            user=member,
-            guild=ctx.guild,  # type: ignore[arg-type]
-            reason=reason,
-            moderator=ctx.author  # type: ignore[arg-type]
+        dm_embed = make_embed(
+            action="kick",
+            title=f"👢 You were kicked from {ctx.guild.name}",
+            description=f"📝 Reason: {reason}",
         )
+        await safe_dm(member, embed=dm_embed)
 
         try:
             await member.kick(reason=reason)
@@ -583,7 +829,12 @@ class ModerationCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="kick", title="👢 User Kicked", description=f"Kicked 👤 **{member}**.\n📝 Reason: {reason}")
+        # Build embed title with override indicator if applicable
+        title = "👢 User Kicked"
+        if is_owner_override:
+            title = "👢👑 User Kicked (Owner Override)"
+
+        embed = make_embed(action="kick", title=title, description=f"Kicked 👤 **{member}**.\n📝 Reason: {reason}")
         embed, file = attach_gif(embed, gif_key="KICK")
         message = await ctx.send(embed=embed, file=file)
 
@@ -603,6 +854,32 @@ class ModerationCog(commands.Cog):
         # Track mod stat
         await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="kicks")
 
+        # Log owner override if applicable
+        if is_owner_override:
+            await log_owner_override(
+                self.bot,
+                self.db,
+                guild_id=ctx.guild.id,  # type: ignore[union-attr]
+                action_type="kick",
+                target_user_id=member.id,
+                moderator_id=ctx.author.id,
+                executor_id=ctx.author.id,
+                reason=reason,
+            )
+
+        # Notify owner of the action
+        await notify_owner_action(
+            self.bot,
+            action="kick",
+            guild_name=ctx.guild.name,
+            guild_id=ctx.guild.id,
+            target=str(member),
+            target_id=member.id,
+            moderator=str(ctx.author),
+            moderator_id=ctx.author.id,
+            reason=reason
+        )
+
         await safe_delete(ctx.message)
 
     @commands.command(name="ban")
@@ -612,16 +889,16 @@ class ModerationCog(commands.Cog):
     async def ban(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
         """Ban a member."""
 
-        if await self._blocked_by_staff_immunity(ctx, member):
+        is_blocked, is_owner_override = await self._blocked_by_staff_immunity(ctx, member)
+        if is_blocked:
             return
 
-        # Send enhanced DM notification via notification service (before ban)
-        await self.notifier.send_ban_notification(
-            user=member,
-            guild=ctx.guild,  # type: ignore[arg-type]
-            reason=reason,
-            moderator=ctx.author  # type: ignore[arg-type]
+        dm_embed = make_embed(
+            action="ban",
+            title=f"🚫 You were banned from {ctx.guild.name}",
+            description=f"📝 Reason: {reason}",
         )
+        await safe_dm(member, embed=dm_embed)
 
         try:
             await ctx.guild.ban(member, reason=reason, delete_message_days=0)
@@ -632,7 +909,12 @@ class ModerationCog(commands.Cog):
 
         await self.db.add_ban(guild_id=ctx.guild.id, user_id=member.id, moderator_id=ctx.author.id, reason=reason)  # type: ignore[union-attr]
 
-        embed = make_embed(action="ban", title="🚫 User Banned", description=f"Banned 👤 **{member}**.\n📝 Reason: {reason}")
+        # Build embed title with override indicator if applicable
+        title = "🚫 User Banned"
+        if is_owner_override:
+            title = "🚫👑 User Banned (Owner Override)"
+
+        embed = make_embed(action="ban", title=title, description=f"Banned 👤 **{member}**.\n📝 Reason: {reason}")
         embed, file = attach_gif(embed, gif_key="BAN")
         message = await ctx.send(embed=embed, file=file)
 
@@ -655,6 +937,32 @@ class ModerationCog(commands.Cog):
 
         # Track mod stat
         await self.db.track_mod_action(guild_id=ctx.guild.id, user_id=ctx.author.id, action_type="bans")
+
+        # Log owner override if applicable
+        if is_owner_override:
+            await log_owner_override(
+                self.bot,
+                self.db,
+                guild_id=ctx.guild.id,  # type: ignore[union-attr]
+                action_type="ban",
+                target_user_id=member.id,
+                moderator_id=ctx.author.id,
+                executor_id=ctx.author.id,
+                reason=reason,
+            )
+
+        # Notify owner of the action
+        await notify_owner_action(
+            self.bot,
+            action="ban",
+            guild_name=ctx.guild.name,
+            guild_id=ctx.guild.id,
+            target=str(member),
+            target_id=member.id,
+            moderator=str(ctx.author),
+            moderator_id=ctx.author.id,
+            reason=reason
+        )
 
         await safe_delete(ctx.message)
 
@@ -703,7 +1011,8 @@ class ModerationCog(commands.Cog):
     async def wm(self, ctx: commands.Context, member: discord.Member, duration: str, *, reason: str) -> None:
         """Warn + mute in a single command."""
 
-        if await self._blocked_by_staff_immunity(ctx, member):
+        is_blocked, is_owner_override = await self._blocked_by_staff_immunity(ctx, member)
+        if is_blocked:
             return
 
         settings = await self._settings(ctx.guild)  # type: ignore[arg-type]
@@ -724,6 +1033,10 @@ class ModerationCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
+        # Get current active warn count for this user to determine the display number
+        active_warnings = await self.db.get_active_warnings(guild_id=ctx.guild.id, user_id=member.id)  # type: ignore[union-attr]
+        warn_number = len(active_warnings) + 1
+
         warn_id = await self.db.add_warning(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
             user_id=member.id,
@@ -739,12 +1052,17 @@ class ModerationCog(commands.Cog):
             duration_seconds=seconds,
         )
 
+        # Build embed title with override indicator if applicable
+        title = "⚠️🔇 Warned & Muted"
+        if is_owner_override:
+            title = "⚠️🔇👑 Warned & Muted (Owner Override)"
+
         embed = make_embed(
             action="wm",
-            title="⚠️🔇 Warned & Muted",
+            title=title,
             description=(
                 f"👤 {member.mention} has been warned and muted.\n\n"
-                f"📍 **Warn ID:** `{warn_id}`\n"
+                f"📍 **Warn #{warn_number}** (DB: `{warn_id}`)\n"
                 f"⏱️ **Mute Duration:** {humanize_seconds(seconds)}\n"
                 f"📝 **Reason:** {reason}"
             ),
@@ -768,6 +1086,19 @@ class ModerationCog(commands.Cog):
         # Log to modlog channel
         settings = await self._settings(ctx.guild)
         await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
+        # Log owner override if applicable
+        if is_owner_override:
+            await log_owner_override(
+                self.bot,
+                self.db,
+                guild_id=ctx.guild.id,  # type: ignore[union-attr]
+                action_type="warn_and_mute",
+                target_user_id=member.id,
+                moderator_id=ctx.author.id,
+                executor_id=ctx.author.id,
+                reason=reason,
+            )
 
         await safe_delete(ctx.message)
 
@@ -804,10 +1135,24 @@ class ModerationCog(commands.Cog):
 
         ok = 0
         failed = 0
+        override_count = 0
         for m in members:
-            if await self._blocked_by_staff_immunity(ctx, m):
+            is_blocked, is_owner_override = await self._blocked_by_staff_immunity(ctx, m)
+            if is_blocked:
                 failed += 1
                 continue
+            if is_owner_override:
+                override_count += 1
+                await log_owner_override(
+                    self.bot,
+                    self.db,
+                    guild_id=ctx.guild.id,  # type: ignore[union-attr]
+                    action_type="masskick",
+                    target_user_id=m.id,
+                    moderator_id=ctx.author.id,
+                    executor_id=ctx.author.id,
+                    reason=reason,
+                )
             await safe_dm(m, embed=make_embed(action="masskick", title=f"👢 You were kicked from {ctx.guild.name}", description=f"📝 Reason: {reason}"))
             try:
                 await m.kick(reason=reason)
@@ -816,7 +1161,11 @@ class ModerationCog(commands.Cog):
             except Exception:
                 failed += 1
 
-        embed = make_embed(action="masskick", title="👢 Mass Kick Results", description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
+        title = "👢 Mass Kick Results"
+        if override_count > 0:
+            title = f"👢👑 Mass Kick Results ({override_count} Owner Overrides)"
+
+        embed = make_embed(action="masskick", title=title, description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         embed, file = attach_gif(embed, gif_key="KICK")
         await ctx.send(embed=embed, file=file)
 
@@ -845,10 +1194,24 @@ class ModerationCog(commands.Cog):
 
         ok = 0
         failed = 0
+        override_count = 0
         for m in members:
-            if await self._blocked_by_staff_immunity(ctx, m):
+            is_blocked, is_owner_override = await self._blocked_by_staff_immunity(ctx, m)
+            if is_blocked:
                 failed += 1
                 continue
+            if is_owner_override:
+                override_count += 1
+                await log_owner_override(
+                    self.bot,
+                    self.db,
+                    guild_id=ctx.guild.id,  # type: ignore[union-attr]
+                    action_type="massban",
+                    target_user_id=m.id,
+                    moderator_id=ctx.author.id,
+                    executor_id=ctx.author.id,
+                    reason=reason,
+                )
             await safe_dm(m, embed=make_embed(action="massban", title=f"🚫 You were banned from {ctx.guild.name}", description=f"📝 Reason: {reason}"))
             try:
                 await ctx.guild.ban(m, reason=reason, delete_message_days=0)  # type: ignore[union-attr]
@@ -858,7 +1221,11 @@ class ModerationCog(commands.Cog):
             except Exception:
                 failed += 1
 
-        embed = make_embed(action="massban", title="🚫 Mass Ban Results", description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
+        title = "🚫 Mass Ban Results"
+        if override_count > 0:
+            title = f"🚫👑 Mass Ban Results ({override_count} Owner Overrides)"
+
+        embed = make_embed(action="massban", title=title, description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         embed, file = attach_gif(embed, gif_key="BAN")
         await ctx.send(embed=embed, file=file)
 
@@ -885,10 +1252,24 @@ class ModerationCog(commands.Cog):
 
         ok = 0
         failed = 0
+        override_count = 0
         for m in members:
-            if await self._blocked_by_staff_immunity(ctx, m):
+            is_blocked, is_owner_override = await self._blocked_by_staff_immunity(ctx, m)
+            if is_blocked:
                 failed += 1
                 continue
+            if is_owner_override:
+                override_count += 1
+                await log_owner_override(
+                    self.bot,
+                    self.db,
+                    guild_id=ctx.guild.id,  # type: ignore[union-attr]
+                    action_type="massmute",
+                    target_user_id=m.id,
+                    moderator_id=ctx.author.id,
+                    executor_id=ctx.author.id,
+                    reason=reason,
+                )
             await safe_dm(m, embed=make_embed(action="massmute", title=f"🔇 You were muted in {ctx.guild.name}", description=f"⏱️ Duration: {humanize_seconds(seconds)}\n📝 Reason: {reason}"))
             try:
                 await m.timeout(until, reason=reason)
@@ -898,7 +1279,11 @@ class ModerationCog(commands.Cog):
             except Exception:
                 failed += 1
 
-        embed = make_embed(action="massmute", title="🔇 Mass Mute Results", description=f"⏱️ Duration: {humanize_seconds(seconds)}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
+        title = "🔇 Mass Mute Results"
+        if override_count > 0:
+            title = f"🔇👑 Mass Mute Results ({override_count} Owner Overrides)"
+
+        embed = make_embed(action="massmute", title=title, description=f"⏱️ Duration: {humanize_seconds(seconds)}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
         embed, file = attach_gif(embed, gif_key="MUTE")
         await ctx.send(embed=embed, file=file)
 
@@ -917,7 +1302,8 @@ class ModerationCog(commands.Cog):
     async def imprison(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
         """Remove all roles except @everyone and store them for later release."""
 
-        if await self._blocked_by_staff_immunity(ctx, member):
+        is_blocked, is_owner_override = await self._blocked_by_staff_immunity(ctx, member)
+        if is_blocked:
             return
 
         stored_role_ids = [r.id for r in member.roles if r != ctx.guild.default_role]
@@ -930,7 +1316,12 @@ class ModerationCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
-        embed = make_embed(action="imprison", title="User Imprisoned", description=f"Removed all roles from {member.mention}.\nReason: {reason}")
+        # Build embed title with override indicator if applicable
+        title = "User Imprisoned"
+        if is_owner_override:
+            title = "👑 User Imprisoned (Owner Override)"
+
+        embed = make_embed(action="imprison", title=title, description=f"Removed all roles from {member.mention}.\nReason: {reason}")
         message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(guild_id=ctx.guild.id, action_type="imprison", user_id=member.id, moderator_id=ctx.author.id, reason=reason, message_id=message.id)  # type: ignore[union-attr]
@@ -938,6 +1329,19 @@ class ModerationCog(commands.Cog):
         # Log to modlog channel
         settings = await self._settings(ctx.guild)
         await log_to_modlog_channel(self.bot, guild=ctx.guild, settings=settings, embed=embed, file=None)
+
+        # Log owner override if applicable
+        if is_owner_override:
+            await log_owner_override(
+                self.bot,
+                self.db,
+                guild_id=ctx.guild.id,  # type: ignore[union-attr]
+                action_type="imprison",
+                target_user_id=member.id,
+                moderator_id=ctx.author.id,
+                executor_id=ctx.author.id,
+                reason=reason,
+            )
         
         await safe_delete(ctx.message)
 

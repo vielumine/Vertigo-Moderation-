@@ -27,7 +27,7 @@ class ChannelsCog(commands.Cog):
     @commands.command(name="checkslowmode")
     @commands.guild_only()
     @commands_channel_check()
-    @require_level("moderator")
+    @require_level("trial_mod")
     async def checkslowmode(self, ctx: commands.Context, channel: discord.TextChannel | None = None) -> None:
         channel = channel or ctx.channel  # type: ignore[assignment]
         if not isinstance(channel, discord.TextChannel):
@@ -40,7 +40,7 @@ class ChannelsCog(commands.Cog):
     @commands.command(name="setslowmode")
     @commands.guild_only()
     @commands_channel_check()
-    @require_level("senior_mod")
+    @require_level("trial_mod")
     async def setslowmode(self, ctx: commands.Context, arg1: str, arg2: str | None = None) -> None:
         """Set slowmode.
 
