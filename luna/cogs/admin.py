@@ -16,6 +16,7 @@ from helpers import (
     add_loading_reaction,
     attach_gif,
     commands_channel_check,
+    discord_timestamp,
     log_to_modlog_channel,
     make_embed,
     notify_owner,
@@ -23,7 +24,6 @@ from helpers import (
     safe_delete,
     safe_dm,
 )
-from services.notification_service import ModActionNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 class AdminCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.notifier = ModActionNotifier(bot, bot.db)  # type: ignore[attr-defined]
 
     @property
     def db(self) -> Database:
@@ -55,18 +54,6 @@ class AdminCog(commands.Cog):
         )
         active = await self.db.get_active_staff_flags(guild_id=ctx.guild.id, staff_user_id=member.id)  # type: ignore[union-attr]
         strike = len(active)
-
-        # Send enhanced DM notification via notification service
-        await self.notifier.send_flag_notification(
-            user=member,
-            guild=ctx.guild,  # type: ignore[arg-type]
-            reason=reason,
-            flag_id=flag_id,
-            admin=ctx.author,  # type: ignore[arg-type]
-            strike_count=strike,
-            max_strikes=config.MAX_STAFF_FLAGS,
-            flag_duration=settings.flag_duration
-        )
 
         title = "🚩 Staff Flag"
         if strike >= config.MAX_STAFF_FLAGS:
@@ -359,7 +346,8 @@ class AdminCog(commands.Cog):
             return
         embed = make_embed(action="wasstaff", title="👮 Staff History", description=f"Recent actions by 👤 **{user}**:")
         for row in rows:
-            embed.add_field(name=row["action_type"], value=row["timestamp"], inline=False)
+            timestamp_str = discord_timestamp(row["timestamp"], "f")
+            embed.add_field(name=row["action_type"], value=timestamp_str, inline=False)
         await ctx.send(embed=embed)
 
 

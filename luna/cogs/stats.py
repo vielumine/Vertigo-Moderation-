@@ -147,28 +147,28 @@ class StaffStatsFilterView(discord.ui.View):
         embed = await self.cog._build_staffstats_embed(self.ctx, self.all_staff, "All Staff")
         await interaction.edit_original_response(embed=embed, view=self)
     
-    @discord.ui.button(label="Trial Mod", style=discord.ButtonStyle.secondary, emoji="🔰")
+    @discord.ui.button(label="Trial Mod", style=discord.ButtonStyle.primary, emoji="🔰")
     async def trial_mod_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         filtered = [s for s in self.all_staff if s['level'] == 'trial_mod']
         embed = await self.cog._build_staffstats_embed(self.ctx, filtered, "Trial Moderators")
         await interaction.edit_original_response(embed=embed, view=self)
     
-    @discord.ui.button(label="Moderator", style=discord.ButtonStyle.secondary, emoji="🛡️")
+    @discord.ui.button(label="Moderator", style=discord.ButtonStyle.primary, emoji="🛡️")
     async def moderator_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         filtered = [s for s in self.all_staff if s['level'] == 'moderator']
         embed = await self.cog._build_staffstats_embed(self.ctx, filtered, "Moderators")
         await interaction.edit_original_response(embed=embed, view=self)
     
-    @discord.ui.button(label="Senior Mod", style=discord.ButtonStyle.secondary, emoji="⭐")
+    @discord.ui.button(label="Senior Mod", style=discord.ButtonStyle.primary, emoji="⭐")
     async def senior_mod_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         filtered = [s for s in self.all_staff if s['level'] == 'senior_mod']
         embed = await self.cog._build_staffstats_embed(self.ctx, filtered, "Senior Moderators")
         await interaction.edit_original_response(embed=embed, view=self)
     
-    @discord.ui.button(label="Head Mod", style=discord.ButtonStyle.secondary, emoji="👑")
+    @discord.ui.button(label="Head Mod", style=discord.ButtonStyle.primary, emoji="👑")
     async def head_mod_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         filtered = [s for s in self.all_staff if s['level'] == 'head_mod']
@@ -287,6 +287,7 @@ class StatsCog(commands.Cog):
         !staffstats
         """
         settings = await self._settings(ctx.guild)
+        trial_mod_roles = await self.db.get_trial_mod_roles(ctx.guild.id)
         
         # Get all staff members with their stats
         all_staff_stats = await self.db.get_all_staff_rankings(ctx.guild.id)
@@ -296,7 +297,7 @@ class StatsCog(commands.Cog):
         for stat in all_staff_stats:
             member = ctx.guild.get_member(stat['user_id'])
             if member:
-                level = role_level_for_member(member, settings)
+                level = role_level_for_member(member, settings, trial_mod_role_ids=trial_mod_roles)
                 enriched_staff.append({
                     'member': member,
                     'total': stat['total'],
@@ -360,7 +361,6 @@ class StatsCog(commands.Cog):
         view = SetStatsView(user)
         await ctx.send(embed=embed, view=view)
         await safe_delete(ctx.message)
-
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -1,8 +1,7 @@
-"""SQLite database layer for Luna.
+"""SQLite database layer for Vertigo.
 
-The database is the source of truth for all moderation actions, guild-specific
-settings, tags, shifts, reminders, and stats. All methods are designed to be 
-safe to call concurrently from cogs.
+The database is the source of truth for all moderation actions and guild-specific
+settings. All methods are designed to be safe to call concurrently from cogs.
 """
 
 from __future__ import annotations
@@ -80,31 +79,26 @@ class TimeoutSettings:
 
 
 @dataclass(slots=True)
-class DMNotificationSettings:
-    guild_id: int
-    enabled: bool
-    notify_warns: bool
-    notify_mutes: bool
-    notify_kicks: bool
-    notify_bans: bool
-    notify_flags: bool
+class BotSettings:
+    avatar_url: str | None
+    banner_url: str | None
+    custom_name: str | None
+    status_type: str | None
+    activity_type: str | None
+    activity_text: str | None
 
 
 @dataclass(slots=True)
-class PromotionSuggestion:
+class PermissionOverride:
     id: int
     guild_id: int
-    user_id: int
-    suggestion_type: str
-    current_role: str | None
-    suggested_role: str | None
-    confidence: float
+    action_type: str
+    target_user_id: int | None
+    moderator_id: int
+    executor_id: int
     reason: str | None
-    metrics: str | None
     timestamp: str
-    status: str
-    reviewed_by: int | None
-    reviewed_at: str | None
+    override_type: str
 
 
 def _csv_to_int_list(value: str | None) -> list[int]:
@@ -272,7 +266,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS ai_settings (
                 guild_id INTEGER PRIMARY KEY,
                 ai_enabled BOOLEAN DEFAULT TRUE,
-                ai_personality TEXT DEFAULT 'professional',
+                ai_personality TEXT DEFAULT 'genz',
                 respond_to_mentions BOOLEAN DEFAULT TRUE,
                 respond_to_dms BOOLEAN DEFAULT FALSE,
                 help_moderation BOOLEAN DEFAULT TRUE
@@ -330,120 +324,34 @@ class Database:
                 role_ids        TEXT DEFAULT ''
             );
 
-            CREATE TABLE IF NOT EXISTS tags (
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                id INTEGER PRIMARY CHECK (id = 1),
+                avatar_url TEXT,
+                banner_url TEXT,
+                custom_name TEXT,
+                status_type TEXT,
+                activity_type TEXT,
+                activity_text TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS permission_overrides (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id        INTEGER NOT NULL,
-                category        TEXT NOT NULL,
-                title           TEXT NOT NULL,
-                description     TEXT NOT NULL,
-                creator_id      INTEGER NOT NULL,
-                created_at      TEXT NOT NULL,
-                UNIQUE(guild_id, category, title)
-            );
-
-            CREATE TABLE IF NOT EXISTS reminders (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id         INTEGER NOT NULL,
-                guild_id        INTEGER,
-                text            TEXT NOT NULL,
-                expiration_ts   TEXT NOT NULL,
-                is_active       INTEGER NOT NULL DEFAULT 1
-            );
-
-            CREATE TABLE IF NOT EXISTS shifts (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id         INTEGER NOT NULL,
-                guild_id        INTEGER NOT NULL,
-                shift_type      TEXT NOT NULL,
-                start_ts_utc    TEXT NOT NULL,
-                start_ts_gmt8   TEXT NOT NULL,
-                end_ts_utc      TEXT,
-                end_ts_gmt8     TEXT,
-                break_duration  INTEGER DEFAULT 0,
-                status          TEXT NOT NULL DEFAULT 'active'
-            );
-
-            CREATE TABLE IF NOT EXISTS shift_configs (
-                guild_id        INTEGER NOT NULL,
-                role_id         INTEGER NOT NULL,
-                shift_type      TEXT NOT NULL,
-                afk_timeout     INTEGER DEFAULT 300,
-                weekly_quota    INTEGER DEFAULT 10,
-                PRIMARY KEY (guild_id, role_id, shift_type)
-            );
-
-            CREATE TABLE IF NOT EXISTS quota_tracking (
-                user_id         INTEGER NOT NULL,
-                guild_id        INTEGER NOT NULL,
-                shift_type      TEXT NOT NULL,
-                week_gmt8       TEXT NOT NULL,
-                hours_logged    REAL DEFAULT 0,
-                quota_met       INTEGER DEFAULT 0,
-                PRIMARY KEY (user_id, guild_id, shift_type, week_gmt8)
-            );
-
-            CREATE TABLE IF NOT EXISTS stats (
-                key             TEXT PRIMARY KEY,
-                value           INTEGER NOT NULL DEFAULT 0
-            );
-
-            CREATE TABLE IF NOT EXISTS dm_notification_settings (
-                guild_id        INTEGER PRIMARY KEY,
-                enabled         INTEGER NOT NULL DEFAULT 1,
-                notify_warns    INTEGER NOT NULL DEFAULT 1,
-                notify_mutes    INTEGER NOT NULL DEFAULT 1,
-                notify_kicks    INTEGER NOT NULL DEFAULT 1,
-                notify_bans     INTEGER NOT NULL DEFAULT 1,
-                notify_flags    INTEGER NOT NULL DEFAULT 1
-            );
-
-            CREATE TABLE IF NOT EXISTS dm_notification_log (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id        INTEGER NOT NULL,
-                user_id         INTEGER NOT NULL,
                 action_type     TEXT NOT NULL,
-                timestamp       TEXT NOT NULL,
-                success         INTEGER NOT NULL,
-                reason          TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS staff_performance_metrics (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id        INTEGER NOT NULL,
-                user_id         INTEGER NOT NULL,
-                period_start    TEXT NOT NULL,
-                period_end      TEXT NOT NULL,
-                warns_count     INTEGER DEFAULT 0,
-                mutes_count     INTEGER DEFAULT 0,
-                kicks_count     INTEGER DEFAULT 0,
-                bans_count      INTEGER DEFAULT 0,
-                total_actions   INTEGER DEFAULT 0,
-                activity_score  REAL DEFAULT 0,
-                UNIQUE(guild_id, user_id, period_start)
-            );
-
-            CREATE TABLE IF NOT EXISTS promotion_suggestions (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id        INTEGER NOT NULL,
-                user_id         INTEGER NOT NULL,
-                suggestion_type TEXT NOT NULL,
-                current_role    TEXT,
-                suggested_role  TEXT,
-                confidence      REAL DEFAULT 0,
+                target_user_id  INTEGER,
+                moderator_id    INTEGER NOT NULL,
+                executor_id     INTEGER NOT NULL,
                 reason          TEXT,
-                metrics         TEXT,
                 timestamp       TEXT NOT NULL,
-                status          TEXT DEFAULT 'pending',
-                reviewed_by     INTEGER,
-                reviewed_at     TEXT
+                override_type   TEXT NOT NULL DEFAULT 'owner_bypass'
             );
 
-            CREATE TABLE IF NOT EXISTS dm_preferences (
-                user_id         INTEGER NOT NULL,
-                guild_id        INTEGER NOT NULL,
-                receive_dms     INTEGER NOT NULL DEFAULT 1,
-                PRIMARY KEY (user_id, guild_id)
-            );
+            CREATE INDEX IF NOT EXISTS idx_permission_overrides_guild 
+                ON permission_overrides (guild_id);
+            CREATE INDEX IF NOT EXISTS idx_permission_overrides_executor 
+                ON permission_overrides (executor_id);
+            CREATE INDEX IF NOT EXISTS idx_permission_overrides_timestamp 
+                ON permission_overrides (timestamp);
             """
         )
         await self.conn.commit()
@@ -547,6 +455,7 @@ class Database:
     async def add_warning(self, *, guild_id: int, user_id: int, moderator_id: int, reason: str, warn_days: int) -> int:
         ts = utcnow()
         expires = ts + timedelta(days=warn_days)
+        
         cur = await self.conn.execute(
             """
             INSERT INTO warnings (user_id, guild_id, moderator_id, reason, timestamp, expires_at, is_active)
@@ -561,6 +470,14 @@ class Database:
         await self.conn.execute(
             "UPDATE warnings SET is_active = 0 WHERE id = ? AND guild_id = ?",
             (warn_id, guild_id),
+        )
+        await self.conn.commit()
+    
+    async def update_warning_reason(self, *, warn_id: int, guild_id: int, new_reason: str) -> None:
+        """Update the reason for a specific warning."""
+        await self.conn.execute(
+            "UPDATE warnings SET reason = ? WHERE id = ? AND guild_id = ?",
+            (new_reason, warn_id, guild_id),
         )
         await self.conn.commit()
 
@@ -1060,50 +977,28 @@ class Database:
         await self.conn.commit()
 
     # ---------------------------------------------------------------------
-    # AI Settings
+    # Trial Mod Roles
     # ---------------------------------------------------------------------
 
-    async def get_ai_settings(self, guild_id: int) -> AISettings:
-        """Get AI settings for guild."""
-        async with self.conn.execute("SELECT * FROM ai_settings WHERE guild_id = ?", (guild_id,)) as cur:
+    async def get_trial_mod_roles(self, guild_id: int) -> list[int]:
+        """Get trial moderator role IDs for a guild."""
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO trial_mod_roles (guild_id, role_ids) VALUES (?, '')",
+            (guild_id,),
+        )
+        await self.conn.commit()
+        async with self.conn.execute("SELECT role_ids FROM trial_mod_roles WHERE guild_id = ?", (guild_id,)) as cur:
             row = await cur.fetchone()
         if row is None:
-            # Create default settings
-            await self.conn.execute(
-                "INSERT OR IGNORE INTO ai_settings (guild_id, ai_enabled, ai_personality, respond_to_mentions, respond_to_dms, help_moderation) VALUES (?, ?, ?, ?, ?, ?)",
-                (guild_id, 1 if config.AI_ENABLED_BY_DEFAULT else 0, "professional", 1, 0, 0),
-            )
-            await self.conn.commit()
-            async with self.conn.execute("SELECT * FROM ai_settings WHERE guild_id = ?", (guild_id,)) as cur:
-                row = await cur.fetchone()
+            return []
+        return _csv_to_int_list(row["role_ids"])
 
-        assert row is not None
-        return AISettings(
-            guild_id=row["guild_id"],
-            ai_enabled=bool(row["ai_enabled"]),
-            ai_personality=row["ai_personality"] or "professional",
-            respond_to_mentions=bool(row["respond_to_mentions"]),
-            respond_to_dms=bool(row["respond_to_dms"]),
-            help_moderation=bool(row["help_moderation"]),
+    async def set_trial_mod_roles(self, guild_id: int, role_ids: list[int]) -> None:
+        """Set trial moderator role IDs for a guild."""
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO trial_mod_roles (guild_id, role_ids) VALUES (?, ?)",
+            (guild_id, _int_list_to_csv(role_ids)),
         )
-
-    async def update_ai_settings(self, guild_id: int, **kwargs: Any) -> None:
-        """Update AI settings."""
-        if not kwargs:
-            return
-
-        normalized: dict[str, Any] = {}
-        for key, value in kwargs.items():
-            if key == "ai_enabled":
-                normalized[key] = bool(value)
-            elif key == "ai_personality":
-                normalized[key] = str(value)
-            elif key in {"respond_to_mentions", "respond_to_dms", "help_moderation"}:
-                normalized[key] = bool(value)
-
-        fields = ", ".join(f"{k} = ?" for k in normalized)
-        params = list(normalized.values()) + [guild_id]
-        await self.conn.execute(f"UPDATE ai_settings SET {fields} WHERE guild_id = ?", params)
         await self.conn.commit()
 
     # ---------------------------------------------------------------------
@@ -1361,382 +1256,205 @@ class Database:
         await self.conn.commit()
 
     # ---------------------------------------------------------------------
-    # Tags System
+    # Bot Settings
     # ---------------------------------------------------------------------
 
-    async def create_tag(self, *, guild_id: int, category: str, title: str, description: str, creator_id: int) -> int:
-        """Create a new tag."""
-        ts = utcnow().isoformat()
-        cur = await self.conn.execute(
-            "INSERT INTO tags (guild_id, category, title, description, creator_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (guild_id, category, title, description, creator_id, ts),
-        )
-        await self.conn.commit()
-        return int(cur.lastrowid)
-
-    async def get_tag(self, *, guild_id: int, category: str, title: str) -> aiosqlite.Row | None:
-        """Get a specific tag."""
-        async with self.conn.execute(
-            "SELECT * FROM tags WHERE guild_id = ? AND category = ? AND title = ?",
-            (guild_id, category, title),
-        ) as cur:
-            return await cur.fetchone()
-
-    async def get_all_tags(self, guild_id: int) -> list[aiosqlite.Row]:
-        """Get all tags for a guild."""
-        async with self.conn.execute(
-            "SELECT * FROM tags WHERE guild_id = ? ORDER BY category, title",
-            (guild_id,),
-        ) as cur:
-            return await cur.fetchall()
-
-    async def get_tags_by_category(self, guild_id: int, category: str) -> list[aiosqlite.Row]:
-        """Get tags by category."""
-        async with self.conn.execute(
-            "SELECT * FROM tags WHERE guild_id = ? AND category = ? ORDER BY title",
-            (guild_id, category),
-        ) as cur:
-            return await cur.fetchall()
-
-    async def update_tag(self, *, guild_id: int, category: str, title: str, description: str) -> None:
-        """Update a tag's description."""
-        await self.conn.execute(
-            "UPDATE tags SET description = ? WHERE guild_id = ? AND category = ? AND title = ?",
-            (description, guild_id, category, title),
-        )
+    async def get_bot_settings(self) -> BotSettings:
+        """Get bot customization settings."""
+        await self.conn.execute("INSERT OR IGNORE INTO bot_settings (id) VALUES (1)")
         await self.conn.commit()
 
-    async def delete_tag(self, *, guild_id: int, category: str, title: str) -> None:
-        """Delete a tag."""
-        await self.conn.execute(
-            "DELETE FROM tags WHERE guild_id = ? AND category = ? AND title = ?",
-            (guild_id, category, title),
-        )
-        await self.conn.commit()
-
-    # ---------------------------------------------------------------------
-    # Reminders
-    # ---------------------------------------------------------------------
-
-    async def add_reminder(self, *, user_id: int, guild_id: int | None, text: str, expiration_ts: str) -> int:
-        """Add a reminder."""
-        cur = await self.conn.execute(
-            "INSERT INTO reminders (user_id, guild_id, text, expiration_ts, is_active) VALUES (?, ?, ?, ?, 1)",
-            (user_id, guild_id, text, expiration_ts),
-        )
-        await self.conn.commit()
-        return int(cur.lastrowid)
-
-    async def get_active_reminders(self, user_id: int) -> list[aiosqlite.Row]:
-        """Get active reminders for a user."""
-        async with self.conn.execute(
-            "SELECT * FROM reminders WHERE user_id = ? AND is_active = 1 ORDER BY expiration_ts",
-            (user_id,),
-        ) as cur:
-            return await cur.fetchall()
-
-    async def get_expired_reminders(self) -> list[aiosqlite.Row]:
-        """Get expired reminders."""
-        now = utcnow().isoformat()
-        async with self.conn.execute(
-            "SELECT * FROM reminders WHERE is_active = 1 AND expiration_ts <= ? ORDER BY expiration_ts",
-            (now,),
-        ) as cur:
-            return await cur.fetchall()
-
-    async def deactivate_reminder(self, reminder_id: int) -> None:
-        """Deactivate a reminder."""
-        await self.conn.execute(
-            "UPDATE reminders SET is_active = 0 WHERE id = ?",
-            (reminder_id,),
-        )
-        await self.conn.commit()
-
-    async def delete_reminder(self, reminder_id: int, user_id: int) -> bool:
-        """Delete a reminder. Returns True if deleted."""
-        async with self.conn.execute(
-            "SELECT id FROM reminders WHERE id = ? AND user_id = ?",
-            (reminder_id, user_id),
-        ) as cur:
+        async with self.conn.execute("SELECT * FROM bot_settings WHERE id = 1") as cur:
             row = await cur.fetchone()
-        
+
         if row is None:
-            return False
-        
-        await self.conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
-        await self.conn.commit()
-        return True
-
-    # ---------------------------------------------------------------------
-    # Shifts System
-    # ---------------------------------------------------------------------
-
-    async def start_shift(self, *, user_id: int, guild_id: int, shift_type: str, start_ts_utc: str, start_ts_gmt8: str) -> int:
-        """Start a new shift."""
-        cur = await self.conn.execute(
-            "INSERT INTO shifts (user_id, guild_id, shift_type, start_ts_utc, start_ts_gmt8, status) VALUES (?, ?, ?, ?, ?, 'active')",
-            (user_id, guild_id, shift_type, start_ts_utc, start_ts_gmt8),
-        )
-        await self.conn.commit()
-        return int(cur.lastrowid)
-
-    async def end_shift(self, *, shift_id: int, end_ts_utc: str, end_ts_gmt8: str, break_duration: int = 0) -> None:
-        """End a shift."""
-        await self.conn.execute(
-            "UPDATE shifts SET end_ts_utc = ?, end_ts_gmt8 = ?, break_duration = ?, status = 'completed' WHERE id = ?",
-            (end_ts_utc, end_ts_gmt8, break_duration, shift_id),
-        )
-        await self.conn.commit()
-
-    async def get_active_shift(self, user_id: int, guild_id: int) -> aiosqlite.Row | None:
-        """Get active shift for a user."""
-        async with self.conn.execute(
-            "SELECT * FROM shifts WHERE user_id = ? AND guild_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
-            (user_id, guild_id),
-        ) as cur:
-            return await cur.fetchone()
-
-    async def get_user_shifts(self, user_id: int, guild_id: int, limit: int = 50) -> list[aiosqlite.Row]:
-        """Get shifts for a user."""
-        async with self.conn.execute(
-            "SELECT * FROM shifts WHERE user_id = ? AND guild_id = ? ORDER BY start_ts_utc DESC LIMIT ?",
-            (user_id, guild_id, limit),
-        ) as cur:
-            return await cur.fetchall()
-
-    async def set_shift_config(self, *, guild_id: int, role_id: int, shift_type: str, afk_timeout: int, weekly_quota: int) -> None:
-        """Set shift configuration."""
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO shift_configs (guild_id, role_id, shift_type, afk_timeout, weekly_quota) VALUES (?, ?, ?, ?, ?)",
-            (guild_id, role_id, shift_type, afk_timeout, weekly_quota),
-        )
-        await self.conn.commit()
-
-    async def get_shift_config(self, guild_id: int, role_id: int, shift_type: str) -> aiosqlite.Row | None:
-        """Get shift configuration."""
-        async with self.conn.execute(
-            "SELECT * FROM shift_configs WHERE guild_id = ? AND role_id = ? AND shift_type = ?",
-            (guild_id, role_id, shift_type),
-        ) as cur:
-            return await cur.fetchone()
-
-    async def update_quota_tracking(self, *, user_id: int, guild_id: int, shift_type: str, week_gmt8: str, hours_logged: float, quota_met: bool) -> None:
-        """Update quota tracking."""
-        await self.conn.execute(
-            """
-            INSERT INTO quota_tracking (user_id, guild_id, shift_type, week_gmt8, hours_logged, quota_met)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, guild_id, shift_type, week_gmt8) 
-            DO UPDATE SET hours_logged = ?, quota_met = ?
-            """,
-            (user_id, guild_id, shift_type, week_gmt8, hours_logged, int(quota_met), hours_logged, int(quota_met)),
-        )
-        await self.conn.commit()
-
-    async def get_quota_tracking(self, user_id: int, guild_id: int, shift_type: str, week_gmt8: str) -> aiosqlite.Row | None:
-        """Get quota tracking."""
-        async with self.conn.execute(
-            "SELECT * FROM quota_tracking WHERE user_id = ? AND guild_id = ? AND shift_type = ? AND week_gmt8 = ?",
-            (user_id, guild_id, shift_type, week_gmt8),
-        ) as cur:
-            return await cur.fetchone()
-
-    # ---------------------------------------------------------------------
-    # Stats Dashboard
-    # ---------------------------------------------------------------------
-
-    async def stats_get(self, key: str, default: int = 0) -> int:
-        """Get a stats value."""
-        async with self.conn.execute("SELECT value FROM stats WHERE key = ?", (key,)) as cur:
-            row = await cur.fetchone()
-        return int(row["value"]) if row else default
-
-    async def stats_set(self, key: str, value: int) -> None:
-        """Set a stats value."""
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO stats (key, value) VALUES (?, ?)",
-            (key, value),
-        )
-        await self.conn.commit()
-
-    # ---------------------------------------------------------------------
-    # DM Notification Settings
-    # ---------------------------------------------------------------------
-
-    async def get_dm_notification_settings(self, guild_id: int) -> DMNotificationSettings:
-        """Get DM notification settings for a guild."""
-        async with self.conn.execute("SELECT * FROM dm_notification_settings WHERE guild_id = ?", (guild_id,)) as cur:
-            row = await cur.fetchone()
-        
-        if row is None:
-            # Create default settings
-            await self.conn.execute(
-                "INSERT OR IGNORE INTO dm_notification_settings (guild_id) VALUES (?)",
-                (guild_id,),
+            return BotSettings(
+                avatar_url=None,
+                banner_url=None,
+                custom_name=None,
+                status_type=None,
+                activity_type=None,
+                activity_text=None,
             )
-            await self.conn.commit()
-            async with self.conn.execute("SELECT * FROM dm_notification_settings WHERE guild_id = ?", (guild_id,)) as cur:
-                row = await cur.fetchone()
-        
-        assert row is not None
-        return DMNotificationSettings(
-            guild_id=row["guild_id"],
-            enabled=bool(row["enabled"]),
-            notify_warns=bool(row["notify_warns"]),
-            notify_mutes=bool(row["notify_mutes"]),
-            notify_kicks=bool(row["notify_kicks"]),
-            notify_bans=bool(row["notify_bans"]),
-            notify_flags=bool(row["notify_flags"]),
+
+        return BotSettings(
+            avatar_url=row["avatar_url"],
+            banner_url=row["banner_url"],
+            custom_name=row["custom_name"],
+            status_type=row["status_type"],
+            activity_type=row["activity_type"],
+            activity_text=row["activity_text"],
         )
 
-    async def update_dm_notification_settings(self, guild_id: int, **kwargs: Any) -> None:
-        """Update DM notification settings."""
-        if not kwargs:
-            return
-        
-        normalized: dict[str, Any] = {}
-        for key, value in kwargs.items():
-            if key in {"enabled", "notify_warns", "notify_mutes", "notify_kicks", "notify_bans", "notify_flags"}:
-                normalized[key] = int(bool(value))
-        
-        fields = ", ".join(f"{k} = ?" for k in normalized)
-        params = list(normalized.values()) + [guild_id]
-        await self.conn.execute(f"UPDATE dm_notification_settings SET {fields} WHERE guild_id = ?", params)
+    async def update_bot_settings(self, **kwargs: Any) -> None:
+        """Update bot customization settings."""
+        await self.conn.execute("INSERT OR IGNORE INTO bot_settings (id) VALUES (1)")
+
+        if kwargs:
+            fields = ", ".join(f"{k} = ?" for k in kwargs)
+            params = list(kwargs.values()) + [1]
+            await self.conn.execute(f"UPDATE bot_settings SET {fields} WHERE id = ?", params)
         await self.conn.commit()
 
-    async def log_dm_notification(self, *, guild_id: int, user_id: int, action_type: str, success: bool, reason: str | None = None) -> None:
-        """Log a DM notification attempt."""
-        ts = utcnow().isoformat()
+    async def reset_bot_settings(self) -> None:
+        """Reset all bot customization settings to defaults."""
+        await self.conn.execute("INSERT OR IGNORE INTO bot_settings (id) VALUES (1)")
         await self.conn.execute(
-            "INSERT INTO dm_notification_log (guild_id, user_id, action_type, timestamp, success, reason) VALUES (?, ?, ?, ?, ?, ?)",
-            (guild_id, user_id, action_type, ts, int(success), reason),
-        )
-        await self.conn.commit()
-
-    async def get_dm_preference(self, user_id: int, guild_id: int) -> bool:
-        """Check if user wants to receive DMs."""
-        async with self.conn.execute(
-            "SELECT receive_dms FROM dm_preferences WHERE user_id = ? AND guild_id = ?",
-            (user_id, guild_id)
-        ) as cur:
-            row = await cur.fetchone()
-        
-        if row is None:
-            return True  # Default to enabled
-        
-        return bool(row["receive_dms"])
-
-    async def set_dm_preference(self, user_id: int, guild_id: int, receive_dms: bool) -> None:
-        """Set user's DM preference."""
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO dm_preferences (user_id, guild_id, receive_dms) VALUES (?, ?, ?)",
-            (user_id, guild_id, int(receive_dms)),
+            "UPDATE bot_settings SET avatar_url = NULL, banner_url = NULL, custom_name = NULL, "
+            "status_type = NULL, activity_type = NULL, activity_text = NULL WHERE id = 1"
         )
         await self.conn.commit()
 
     # ---------------------------------------------------------------------
-    # Staff Performance Metrics
+    # Permission Overrides (Owner Immunity Bypass)
     # ---------------------------------------------------------------------
 
-    async def record_performance_metrics(
+    async def add_permission_override(
         self,
         *,
         guild_id: int,
-        user_id: int,
-        period_start: str,
-        period_end: str,
-        warns_count: int = 0,
-        mutes_count: int = 0,
-        kicks_count: int = 0,
-        bans_count: int = 0,
-        activity_score: float = 0.0
-    ) -> None:
-        """Record staff performance metrics for a period."""
-        total_actions = warns_count + mutes_count + kicks_count + bans_count
-        await self.conn.execute(
-            """
-            INSERT OR REPLACE INTO staff_performance_metrics 
-            (guild_id, user_id, period_start, period_end, warns_count, mutes_count, kicks_count, bans_count, total_actions, activity_score)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (guild_id, user_id, period_start, period_end, warns_count, mutes_count, kicks_count, bans_count, total_actions, activity_score),
-        )
-        await self.conn.commit()
-
-    async def get_performance_metrics(self, guild_id: int, user_id: int, period_start: str) -> aiosqlite.Row | None:
-        """Get performance metrics for a specific period."""
-        async with self.conn.execute(
-            "SELECT * FROM staff_performance_metrics WHERE guild_id = ? AND user_id = ? AND period_start = ?",
-            (guild_id, user_id, period_start),
-        ) as cur:
-            return await cur.fetchone()
-
-    async def get_all_staff_performance(self, guild_id: int, period_start: str) -> list[aiosqlite.Row]:
-        """Get all staff performance for a specific period."""
-        async with self.conn.execute(
-            "SELECT * FROM staff_performance_metrics WHERE guild_id = ? AND period_start = ? ORDER BY total_actions DESC",
-            (guild_id, period_start),
-        ) as cur:
-            return await cur.fetchall()
-
-    # ---------------------------------------------------------------------
-    # Promotion Suggestions
-    # ---------------------------------------------------------------------
-
-    async def add_promotion_suggestion(
-        self,
-        *,
-        guild_id: int,
-        user_id: int,
-        suggestion_type: str,
-        current_role: str | None,
-        suggested_role: str | None,
-        confidence: float,
-        reason: str | None,
-        metrics: str | None
+        action_type: str,
+        target_user_id: int | None,
+        moderator_id: int,
+        executor_id: int,
+        reason: str | None = None,
+        override_type: str = "owner_bypass",
     ) -> int:
-        """Add a promotion suggestion."""
+        """Log a permission override action (owner bypassing staff immunity)."""
         ts = utcnow().isoformat()
         cur = await self.conn.execute(
             """
-            INSERT INTO promotion_suggestions 
-            (guild_id, user_id, suggestion_type, current_role, suggested_role, confidence, reason, metrics, timestamp, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+            INSERT INTO permission_overrides 
+            (guild_id, action_type, target_user_id, moderator_id, executor_id, reason, timestamp, override_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (guild_id, user_id, suggestion_type, current_role, suggested_role, confidence, reason, metrics, ts),
+            (guild_id, action_type, target_user_id, moderator_id, executor_id, reason, ts, override_type),
         )
         await self.conn.commit()
         return int(cur.lastrowid)
 
-    async def get_pending_suggestions(self, guild_id: int) -> list[aiosqlite.Row]:
-        """Get all pending promotion suggestions."""
+    async def get_override_logs(
+        self,
+        *,
+        guild_id: int | None = None,
+        executor_id: int | None = None,
+        target_user_id: int | None = None,
+        limit: int = 50,
+    ) -> list[PermissionOverride]:
+        """Get permission override logs with optional filtering."""
+        conditions = []
+        params: list[Any] = []
+        
+        if guild_id is not None:
+            conditions.append("guild_id = ?")
+            params.append(guild_id)
+        if executor_id is not None:
+            conditions.append("executor_id = ?")
+            params.append(executor_id)
+        if target_user_id is not None:
+            conditions.append("target_user_id = ?")
+            params.append(target_user_id)
+        
+        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        
         async with self.conn.execute(
-            "SELECT * FROM promotion_suggestions WHERE guild_id = ? AND status = 'pending' ORDER BY timestamp DESC",
-            (guild_id,),
+            f"""
+            SELECT * FROM permission_overrides 
+            {where_clause}
+            ORDER BY timestamp DESC 
+            LIMIT ?
+            """,
+            params + [limit],
         ) as cur:
-            return await cur.fetchall()
+            rows = await cur.fetchall()
+        
+        return [
+            PermissionOverride(
+                id=row["id"],
+                guild_id=row["guild_id"],
+                action_type=row["action_type"],
+                target_user_id=row["target_user_id"],
+                moderator_id=row["moderator_id"],
+                executor_id=row["executor_id"],
+                reason=row["reason"],
+                timestamp=row["timestamp"],
+                override_type=row["override_type"],
+            )
+            for row in rows
+        ]
 
-    async def get_suggestion(self, suggestion_id: int) -> aiosqlite.Row | None:
-        """Get a specific promotion suggestion."""
+    async def get_override_stats(self, *, guild_id: int | None = None, days: int = 30) -> dict[str, int]:
+        """Get statistics on permission overrides."""
+        cutoff = (utcnow() - timedelta(days=days)).isoformat()
+        
+        conditions = ["timestamp >= ?"]
+        params: list[Any] = [cutoff]
+        
+        if guild_id is not None:
+            conditions.append("guild_id = ?")
+            params.append(guild_id)
+        
+        where_clause = "WHERE " + " AND ".join(conditions)
+        
+        # Get total count
         async with self.conn.execute(
-            "SELECT * FROM promotion_suggestions WHERE id = ?",
-            (suggestion_id,),
+            f"SELECT COUNT(*) as count FROM permission_overrides {where_clause}",
+            params,
         ) as cur:
-            return await cur.fetchone()
-
-    async def review_suggestion(self, suggestion_id: int, reviewed_by: int, status: str) -> None:
-        """Review a promotion suggestion."""
-        ts = utcnow().isoformat()
-        await self.conn.execute(
-            "UPDATE promotion_suggestions SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",
-            (status, reviewed_by, ts, suggestion_id),
-        )
-        await self.conn.commit()
-
-    async def get_user_suggestions(self, guild_id: int, user_id: int, limit: int = 10) -> list[aiosqlite.Row]:
-        """Get promotion suggestions for a specific user."""
+            row = await cur.fetchone()
+            total = row["count"] if row else 0
+        
+        # Get count by action type
         async with self.conn.execute(
-            "SELECT * FROM promotion_suggestions WHERE guild_id = ? AND user_id = ? ORDER BY timestamp DESC LIMIT ?",
-            (guild_id, user_id, limit),
+            f"""
+            SELECT action_type, COUNT(*) as count 
+            FROM permission_overrides 
+            {where_clause}
+            GROUP BY action_type
+            """,
+            params,
         ) as cur:
-            return await cur.fetchall()
+            rows = await cur.fetchall()
+            by_action = {row["action_type"]: row["count"] for row in rows}
+        
+        # Get count by executor
+        async with self.conn.execute(
+            f"""
+            SELECT executor_id, COUNT(*) as count 
+            FROM permission_overrides 
+            {where_clause}
+            GROUP BY executor_id
+            """,
+            params,
+        ) as cur:
+            rows = await cur.fetchall()
+            by_executor = {row["executor_id"]: row["count"] for row in rows}
+        
+        return {
+            "total": total,
+            "by_action": by_action,
+            "by_executor": by_executor,
+        }
+
+    async def get_guilds_with_overrides(self, *, limit: int = 100) -> list[dict]:
+        """Get list of guilds that have had permission overrides."""
+        async with self.conn.execute(
+            """
+            SELECT guild_id, COUNT(*) as override_count, MAX(timestamp) as last_override
+            FROM permission_overrides
+            GROUP BY guild_id
+            ORDER BY last_override DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+        
+        return [
+            {
+                "guild_id": row["guild_id"],
+                "override_count": row["override_count"],
+                "last_override": row["last_override"],
+            }
+            for row in rows
+        ]

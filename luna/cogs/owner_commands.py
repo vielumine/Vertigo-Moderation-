@@ -8,265 +8,9 @@ import discord
 from discord.ext import commands
 
 import config
-from helpers import Page, PaginationView, make_embed, require_owner
+from helpers import make_embed, require_owner
 
 logger = logging.getLogger(__name__)
-
-
-def _chunk_commands(commands: list[str], size: int) -> list[list[str]]:
-    return [commands[i : i + size] for i in range(0, len(commands), size)]
-
-
-def _build_help_all_pages(prefix: str) -> list[Page]:
-    sections: list[tuple[str, list[str]]] = [
-        (
-            "👑 Owner Commands",
-            [
-                "commands",
-                "guilds",
-                "dmuser <user> <message>",
-                "waketime",
-                "banguild <guild_id> [reason]",
-                "unbanguild <guild_id>",
-                "checkguild <guild_id>",
-                "guildlist",
-                "nuke [channel]",
-                "extract_dms <user> [limit]",
-            ],
-        ),
-        (
-            "🤖 AI Targeting Commands",
-            [
-                "ai_target <user> [notes]",
-                "ai_stop <user>",
-            ],
-        ),
-        (
-            "🧠 AI Moderation Commands",
-            [
-                "aiwarn <user> [channel] <reason>",
-                "aidelwarn <user> <warn_id> [channel]",
-                "aiwarnings <user>",
-                "aimodlogs <user>",
-                "aimute <user> <duration> [channel] <reason>",
-                "aiunmute <user> [channel] [reason]",
-                "aikick <user> <reason>",
-                "aiban <user> <reason>",
-                "aiunban <user> <reason>",
-                "aiwm <user> <duration> [channel] <reason>",
-                "aimasskick <users,users> <reason>",
-                "aimassban <users,users> <reason>",
-                "aimassmute <users,users> <duration> <reason>",
-                "aiimprison <user> <reason>",
-                "airelease <user> [reason]",
-                "aiflag <staff_user> <reason>",
-                "aitarget <user> [notes]",
-                "airemove <user>",
-                "blacklist <user> <reason>",
-                "unblacklist <user>",
-                "seeblacklist",
-                "timeoutpanel",
-            ],
-        ),
-        (
-            "⚠️ Moderation Commands",
-            [
-                "warn <user> <reason>",
-                "delwarn <user> <warn_id>",
-                "warnings <user>",
-                "modlogs <user>",
-                "mute <user> <duration> [reason]",
-                "unmute <user> [reason]",
-                "kick <user> <reason>",
-                "ban <user> <reason>",
-                "unban <user> <reason>",
-                "wm <user> <duration> <reason>",
-                "wmr <duration> <reason>",
-                "masskick <users,users> <reason>",
-                "massban <users,users> <reason>",
-                "massmute <users,users> <duration> <reason>",
-                "imprison <user> <reason>",
-                "release <user> [reason]",
-            ],
-        ),
-        (
-            "📌 Role Commands",
-            [
-                "role <user> <role>",
-                "removerole <user> <role>",
-                "temprole <user> <role> <duration>",
-                "removetemp <user> <role>",
-                "persistrole <user> <role>",
-                "removepersist <user> <role>",
-                "massrole <users,users> <role>",
-                "massremoverole <users,users> <role>",
-                "masstemprole <users,users> <role> <duration>",
-                "massremovetemp <users,users> <role>",
-                "masspersistrole <users,users> <role>",
-                "massremovepersist <users,users> <role>",
-            ],
-        ),
-        (
-            "⏱️ Channel Commands",
-            [
-                "checkslowmode [channel]",
-                "setslowmode [channel] <duration>",
-                "massslow <channels,channels> <duration>",
-                "lock [channel]",
-                "unlock [channel]",
-                "hide [channel]",
-                "unhide [channel]",
-                "message <channel> <message>",
-                "editmess <message_id> <new_message>",
-                "replymess <message_id> <reply>",
-                "deletemess <message_id>",
-                "reactmess <message_id> <emoji>",
-            ],
-        ),
-        (
-            "🧹 Cleaning Commands",
-            [
-                "clean [amount]",
-                "purge <amount>",
-                "purgeuser <user> <amount>",
-                "purgematch <keyword> <amount>",
-            ],
-        ),
-        (
-            "👤 Member Commands",
-            [
-                "mywarns",
-                "myavatar",
-                "mybanner",
-                "myinfo",
-            ],
-        ),
-        (
-            "📋 Miscellaneous Commands",
-            [
-                "help",
-                "adcmd",
-                "userinfo <user>",
-                "serverinfo",
-                "botinfo",
-                "checkavatar <user>",
-                "checkbanner <user>",
-                "members",
-                "ping",
-                "wasbanned <user>",
-                "checkdur <user>",
-                "changenick <user> <nickname>",
-                "removenick <user>",
-                "roleperms <role>",
-            ],
-        ),
-        (
-            "🤖 AI Chat Commands",
-            [
-                "ai <question>",
-            ],
-        ),
-        (
-            "🛠️ Utility Commands",
-            [
-                "announce <channel> <message>",
-                "poll <question>",
-                "define <word>",
-                "askai <question>",
-                "remindme <duration> <text>",
-                "reminders",
-                "deleteremind <id>",
-            ],
-        ),
-        (
-            "🕒 Shift Commands",
-            [
-                "manage_shift",
-            ],
-        ),
-        (
-            "📊 Stats Commands",
-            [
-                "ms [user]",
-                "staffstats",
-                "set_ms [user]",
-            ],
-        ),
-        (
-            "🏷️ Tag Commands",
-            [
-                "tag <category> <title>",
-                "tags [category]",
-                "tag_create <category> <title> <description>",
-                "tag_edit <category> <title> <description>",
-                "tag_delete <category> <title>",
-            ],
-        ),
-        (
-            "📬 Notification Commands",
-            [
-                "dmnotify status",
-                "dmnotify enable",
-                "dmnotify disable",
-                "dmnotify toggle <type>",
-                "dmnotify test [member]",
-                "optout",
-                "optin",
-            ],
-        ),
-        (
-            "🧭 Setup Commands",
-            [
-                "setup",
-                "adminsetup",
-            ],
-        ),
-        (
-            "🏛️ Admin Commands",
-            [
-                "flag <staff_user> <reason>",
-                "unflag <staff_user> <strike_id>",
-                "terminate <staff_user> [reason]",
-                "lockchannels",
-                "unlockchannels",
-                "scanacc <user>",
-                "stafflist",
-                "wasstaff <user>",
-            ],
-        ),
-        (
-            "📊 Hierarchy Commands",
-            [
-                "hierarchy",
-                "promote <staff>",
-                "demote <staff>",
-            ],
-        ),
-        (
-            "📈 Promotion Commands",
-            [
-                "promotion list",
-                "promotion review <id> <approve/deny>",
-                "promotion analyze <member>",
-                "promotion stats <member>",
-            ],
-        ),
-    ]
-
-    pages: list[Page] = []
-    for title, commands_list in sections:
-        chunks = _chunk_commands(commands_list, 8)
-        for chunk_index, chunk in enumerate(chunks, start=1):
-            suffix = f" ({chunk_index}/{len(chunks)})" if len(chunks) > 1 else ""
-            description = "\n".join(f"`{prefix}{command}`" for command in chunk)
-            embed = make_embed(action="owner", title=f"{title}{suffix}", description=description)
-            pages.append(Page(embed=embed))
-
-    total_pages = len(pages)
-    for index, page in enumerate(pages, start=1):
-        page.embed.set_footer(text=f"{config.BOT_NAME} • Page {index}/{total_pages}")
-
-    return pages
 
 
 class OwnerCommandsCog(commands.Cog):
@@ -280,10 +24,188 @@ class OwnerCommandsCog(commands.Cog):
     async def show_all_commands(self, ctx: commands.Context) -> None:
         """Show all available commands organized by category."""
         try:
-            prefix = ctx.prefix or config.DEFAULT_PREFIX
-            pages = _build_help_all_pages(prefix)
-            view = PaginationView(pages=pages, author_id=ctx.author.id)
-            await ctx.send(embed=pages[0].embed, view=view)
+            # Create the main embed
+            embed = make_embed(
+                action="owner",
+                title="📋 Vertigo Bot - Complete Command List",
+                description="All available commands organized by permission level and category."
+            )
+            
+            embed.add_field(
+                name="🔧 Owner Only Commands",
+                value=(
+                    "**Bot Management:**\n"
+                    "`!botavatar [url|attachment]` - Change bot avatar\n"
+                    "`!botbanner [url|attachment]` - Change bot banner\n"
+                    "`!botname <name>` - Change bot username\n"
+                    "`!botstatus <status>` - Change bot presence\n"
+                    "`!botactivity <type> <text>` - Set bot activity\n"
+                    "`!botinfo` - View current bot settings\n"
+                    "`!botreset` - Reset all bot settings\n\n"
+                    "**Guild Management:**\n"
+                    "`!guilds` - List all connected guilds\n"
+                    "`!dmuser <user> <msg>` - DM a user\n"
+                    "`!waketime` - Show bot uptime\n"
+                    "`!banguild <id> [reason]` - Blacklist guild\n"
+                    "`!unbanguild <id>` - Unblacklist guild\n"
+                    "`!checkguild <id>` - Check guild info\n\n"
+                    "**AI Moderation:**\n"
+                    "`!aiwarn`, `!aimute`, `!aikick`, `!aiban`, `!aiflag`\n"
+                    "`!aitarget`, `!airemove`\n"
+                    "`!blacklist`, `!unblacklist`, `!seeblacklist`\n"
+                    "`!timeoutpanel`\n\n"
+                    "**AI Chatbot:**\n"
+                    "`!ai`, `!toggle_ai`, `!ai_settings`"
+                ),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="👑 Administrator Commands",
+                value=(
+                    "**Staff Management:**\n"
+                    "`!flag`, `!unflag`, `!terminate`, `!stafflist`\n"
+                    "`!adminsetup`, `!lockchannels`, `!unlockchannels`\n\n"
+                    "**Moderation:**\n"
+                    "`!warn`, `!mute`, `!kick`, `!ban`\n"
+                    "`!wm`, `!wmr` (with undo buttons)\n"
+                    "`!masskick`, `!massban`, `!massmute`\n"
+                    "`!imprison`, `!release`\n\n"
+                    "**Role Management:**\n"
+                    "`!role`, `!removerole`\n"
+                    "`!temprole`, `!removetemp`\n"
+                    "`!persistrole`, `!removepersist`\n\n"
+                    "**Channel Management:**\n"
+                    "`!checkslowmode`, `!setslowmode`\n"
+                    "`!massslow`, `!lockchannels`, `!unlockchannels`\n\n"
+                    "**Information:**\n"
+                    "`!setup`, `!adminsetup`, `!members`"
+                ),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🛡️ Senior Moderator Commands",
+                value=(
+                    "**Enhanced Moderation:**\n"
+                    "`!wm` (warn + mute)\n"
+                    "`!wmr` (reply-based warn + mute)\n"
+                    "`!masskick`, `!massban`, `!massmute`\n"
+                    "`!massrole`, `!massremoverole`\n"
+                    "`!masstemprole`, `!massremovetemp`\n"
+                    "`!masspersistrole`, `!massremovepersist`\n\n"
+                    "**Role Management:**\n"
+                    "`!temprole`, `!removetemp`\n"
+                    "`!persistrole`, `!removepersist`\n\n"
+                    "**Advanced Moderation:**\n"
+                    "`!imprison`, `!release`"
+                ),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="👮 Moderator Commands",
+                value=(
+                    "**Basic Moderation:**\n"
+                    "`!warn`, `!delwarn`\n"
+                    "`!mute`, `!unmute`\n"
+                    "`!kick`, `!ban`, `!unban`\n\n"
+                    "**Information:**\n"
+                    "`!warnings`, `!modlogs`\n"
+                    "`!userinfo`, `!serverinfo`\n"
+                    "`!checkavatar`, `!checkbanner`\n\n"
+                    "**Role Management:**\n"
+                    "`!role`, `!removerole`\n\n"
+                    "**Channel Info:**\n"
+                    "`!checkslowmode`"
+                ),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="👤 Everyone Commands",
+                value=(
+                    "**Information:**\n"
+                    "`!help`, `!ping`\n"
+                    "`!myinfo`, `!mywarns`\n\n"
+                    "**AI Chatbot:**\n"
+                    "`!ai` (if enabled)\n"
+                    "Mentions: `@Vertigo` (if enabled)\n\n"
+                    "**Server Info:**\n"
+                    "`!serverinfo`, `!members`"
+                ),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🔧 Setup & Configuration",
+                value=(
+                    "**Server Setup:**\n"
+                    "`!setup` - Configure basic server settings\n"
+                    "`!adminsetup` - Configure admin settings\n\n"
+                    "**AI Configuration:**\n"
+                    "`!ai_settings` - Configure AI chatbot\n"
+                    "`!toggle_ai` - Enable/disable AI\n\n"
+                    "**Timeout System:**\n"
+                    "`!timeoutpanel` - Manage prohibited terms\n\n"
+                    "**Channel Configuration:**\n"
+                    "`!lockchannels`, `!unlockchannels`"
+                ),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🎮 AI Features",
+                value=(
+                    "**AI Chatbot:**\n"
+                    "`!ai [question]` - Ask AI anything\n"
+                    "Mentions work automatically\n\n"
+                    "**AI Moderation:**\n"
+                    "`!aitarget` - Target users for AI roasting\n"
+                    "`!aiflag` - Flag staff with AI approval\n\n"
+                    "**AI Settings:**\n"
+                    "Three personalities: Gen-Z, Professional, Funny\n"
+                    "Rate limited and safety features included\n\n"
+                    "**Targeting System:**\n"
+                    "30% chance to roast targeted users\n"
+                    "10% chance for fake moderation actions"
+                ),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="⚠️ Important Notes",
+                value=(
+                    "**Undo Buttons:**\n"
+                    "• Only work for 5 minutes\n"
+                    "• Only the person who performed the action can use them\n"
+                    "• All undo actions are logged to modlogs\n\n"
+                    "**AI Safety:**\n"
+                    "• Rate limited (1 request per 5 seconds)\n"
+                    "• Character limit (200 chars)\n"
+                    "• Content filtering and timeout protection\n\n"
+                    "**Timeout System:**\n"
+                    "• Staff are immune (all configured roles)\n"
+                    "• Real-time phrase detection\n"
+                    "• Alert system with action buttons\n\n"
+                    "**Blacklist System:**\n"
+                    "• Completely blocks bot usage\n"
+                    "• Works even for administrators\n"
+                    "• Only removable by bot owner"
+                ),
+                inline=False
+            )
+            
+            # Add footer with bot info
+            embed.set_footer(
+                text=f"{config.BOT_NAME} v2.0 | "
+                      f"Prefix: ! | "
+                      f"Owner: <@{config.OWNER_ID}> | "
+                      f"Use !help for basic commands"
+            )
+            
+            await ctx.send(embed=embed)
+            
         except Exception as e:
             logger.error("Commands list error: %s", e)
             embed = make_embed(
