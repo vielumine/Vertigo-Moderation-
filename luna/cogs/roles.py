@@ -10,7 +10,6 @@ from discord.ext import commands
 from database import Database
 from helpers import (
     add_loading_reaction,
-    attach_gif,
     commands_channel_check,
     extract_id,
     log_to_modlog_channel,
@@ -56,8 +55,7 @@ class RolesCog(commands.Cog):
             return
 
         embed = make_embed(action="role", title="📌 Role Assigned", description=f"👤 Assigned {role.mention} to {member.mention}.")
-        embed, file = attach_gif(embed, gif_key="ROLE_ASSIGNED")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -95,8 +93,7 @@ class RolesCog(commands.Cog):
             return
 
         embed = make_embed(action="removerole", title="📌 Role Removed", description=f"👤 Removed {role.mention} from {member.mention}.")
-        embed, file = attach_gif(embed, gif_key="ROLE_REMOVED")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -148,8 +145,7 @@ class RolesCog(commands.Cog):
             title="⏱️ Temporary Role Assigned",
             description=f"👤 Assigned {role.mention} to {member.mention} for **{duration}**.",
         )
-        embed, file = attach_gif(embed, gif_key="TEMP_ROLE")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -227,8 +223,7 @@ class RolesCog(commands.Cog):
         )
 
         embed = make_embed(action="persistrole", title="Persistent Role Assigned", description=f"Assigned persistent {role.mention} to {member.mention}.")
-        embed, file = attach_gif(embed, gif_key="PERSIST_ROLE")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]

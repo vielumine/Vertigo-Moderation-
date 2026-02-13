@@ -1,4 +1,4 @@
-"""AI Chatbot with Gen-Z meme personality using HuggingFace Inference API."""
+"""AI Chatbot with Gen-Z meme personality using Gemini API."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from helpers import (
 )
 
 if TYPE_CHECKING:
-    from main import VertigoBot
+    from app import LunaBot
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ class AIButtonView(discord.ui.View):
 class AICog(commands.Cog):
     """AI Chatbot with Gen-Z meme personality."""
     
-    def __init__(self, bot: VertigoBot) -> None:
+    def __init__(self, bot: LunaBot) -> None:
         self.bot = bot
     
     @property
@@ -189,7 +189,7 @@ class AICog(commands.Cog):
             )
             
             # Add footer with character count
-            embed.set_footer(text=f"Powered by HuggingFace • {len(response)}/{config.MAX_RESPONSE_LENGTH} characters")
+            embed.set_footer(text=f"Powered by Gemini • {len(response)}/{config.MAX_RESPONSE_LENGTH} characters")
             
             await ctx.send(embed=embed)
             
@@ -312,6 +312,6 @@ class AICog(commands.Cog):
             await ctx.send(embed=embed)
 
 
-async def setup(bot: VertigoBot) -> None:
+async def setup(bot: LunaBot) -> None:
     """Load the AI cog."""
     await bot.add_cog(AICog(bot))

@@ -14,7 +14,6 @@ from database import Database, GuildSettings
 from helpers import (
     Page,
     PaginationView,
-    attach_gif,
     can_bot_act_on,
     can_moderator_act_on,
     check_staff_immunity_with_override,
@@ -500,9 +499,8 @@ class ModerationCog(commands.Cog):
         )
         embed.add_field(name="⏱️ Expires", value=discord.utils.format_dt(expires_at, 'R'), inline=True)
         embed.add_field(name="👮 Moderator", value=ctx.author.mention, inline=True)
-        embed, file = attach_gif(embed, gif_key="WARN")
 
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
         message_id = message.id
 
         # Add undo view
@@ -580,8 +578,7 @@ class ModerationCog(commands.Cog):
             title="🗑️ Warning Removed",
             description=f"📍 Removed warning `#{warn_id}` for 👤 {member.mention}.",
         )
-        embed, file = attach_gif(embed, gif_key="WARN_REMOVED")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -710,8 +707,7 @@ class ModerationCog(commands.Cog):
             description=f"👤 {member.mention} has been muted for **{humanize_seconds(seconds)}**.\n\n📝 **Reason:** {reason}",
         )
         embed.add_field(name="👮 Moderator", value=ctx.author.mention, inline=True)
-        embed, file = attach_gif(embed, gif_key="MUTE")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         # Add undo view
         undo_view = ModerationUndoView("mute", member.id, ctx.guild.id, message.id, ctx.author.id)
@@ -786,8 +782,7 @@ class ModerationCog(commands.Cog):
         await self.db.deactivate_active_mutes(guild_id=ctx.guild.id, user_id=member.id)  # type: ignore[union-attr]
 
         embed = make_embed(action="unmute", title="🔊 User Unmuted", description=f"👤 {member.mention} has been unmuted.\n📝 Reason: {reason}")
-        embed, file = attach_gif(embed, gif_key="UNMUTE")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -835,8 +830,7 @@ class ModerationCog(commands.Cog):
             title = "👢👑 User Kicked (Owner Override)"
 
         embed = make_embed(action="kick", title=title, description=f"Kicked 👤 **{member}**.\n📝 Reason: {reason}")
-        embed, file = attach_gif(embed, gif_key="KICK")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -915,8 +909,7 @@ class ModerationCog(commands.Cog):
             title = "🚫👑 User Banned (Owner Override)"
 
         embed = make_embed(action="ban", title=title, description=f"Banned 👤 **{member}**.\n📝 Reason: {reason}")
-        embed, file = attach_gif(embed, gif_key="BAN")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         # Add undo view
         undo_view = ModerationUndoView("ban", member.id, ctx.guild.id, message.id, ctx.author.id)
@@ -1067,8 +1060,7 @@ class ModerationCog(commands.Cog):
                 f"📝 **Reason:** {reason}"
             ),
         )
-        embed, file = attach_gif(embed, gif_key="WARN_AND_MUTE")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         # Add undo view
         undo_view = ModerationUndoView("wm", member.id, ctx.guild.id, message.id, ctx.author.id)
@@ -1166,8 +1158,7 @@ class ModerationCog(commands.Cog):
             title = f"👢👑 Mass Kick Results ({override_count} Owner Overrides)"
 
         embed = make_embed(action="masskick", title=title, description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
-        embed, file = attach_gif(embed, gif_key="KICK")
-        await ctx.send(embed=embed, file=file)
+        await ctx.send(embed=embed)
 
         # Log to modlog channel
         settings = await self._settings(ctx.guild)
@@ -1226,8 +1217,7 @@ class ModerationCog(commands.Cog):
             title = f"🚫👑 Mass Ban Results ({override_count} Owner Overrides)"
 
         embed = make_embed(action="massban", title=title, description=f"✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
-        embed, file = attach_gif(embed, gif_key="BAN")
-        await ctx.send(embed=embed, file=file)
+        await ctx.send(embed=embed)
 
         # Log to modlog channel
         settings = await self._settings(ctx.guild)
@@ -1284,8 +1274,7 @@ class ModerationCog(commands.Cog):
             title = f"🔇👑 Mass Mute Results ({override_count} Owner Overrides)"
 
         embed = make_embed(action="massmute", title=title, description=f"⏱️ Duration: {humanize_seconds(seconds)}\n✔️ Succeeded: **{ok}**\n❌ Failed: **{failed}**")
-        embed, file = attach_gif(embed, gif_key="MUTE")
-        await ctx.send(embed=embed, file=file)
+        await ctx.send(embed=embed)
 
         # Log to modlog channel
         settings = await self._settings(ctx.guild)
