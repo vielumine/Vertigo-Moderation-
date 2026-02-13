@@ -166,6 +166,7 @@ COGS: Sequence[str] = (
     "cogs.wmr",
     "cogs.helpers",  # Tags system
     "cogs.utility",  # New utility commands
+    "cogs.script_updates",  # Script update panel
     "cogs.shifts",   # Shift management
     "cogs.notifications",  # DM notification management
     "cogs.promotions",     # Staff promotion suggestions

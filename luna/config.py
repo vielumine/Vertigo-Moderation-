@@ -180,6 +180,9 @@ EMBED_COLORS: dict[str, int] = {
     "translate": EMBED_COLOR_STARLIGHT_BLUE,
     "reminder": EMBED_COLOR_STARLIGHT_BLUE,
 
+    # Script Updates (Lunar Glow)
+    "script_update": EMBED_COLOR_LUNAR_GLOW,
+
     # Stats Dashboard (Lunar Glow)
     "stats": EMBED_COLOR_LUNAR_GLOW,
     "refresh": EMBED_COLOR_LUNAR_GLOW,
