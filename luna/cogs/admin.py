@@ -14,7 +14,6 @@ from helpers import (
     Page,
     PaginationView,
     add_loading_reaction,
-    attach_gif,
     commands_channel_check,
     discord_timestamp,
     log_to_modlog_channel,
@@ -66,8 +65,7 @@ class AdminCog(commands.Cog):
         )
         if strike >= config.MAX_STAFF_FLAGS:
             embed.add_field(name="⚠️ Warning", value="Auto-termination triggered!", inline=False)
-        embed, file = attach_gif(embed, gif_key="STAFF_FLAG")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -102,8 +100,7 @@ class AdminCog(commands.Cog):
             title="🚩 Flag Removed",
             description=f"📍 Removed flag `{strike_id}` for 👤 {member.mention}.\n📊 Updated Strikes: **{strike_count}/{config.MAX_STAFF_FLAGS}**",
         )
-        embed, file = attach_gif(embed, gif_key="STAFF_UNFLAG")
-        message = await ctx.send(embed=embed, file=file)
+        message = await ctx.send(embed=embed)
 
         await self.db.add_modlog(
             guild_id=ctx.guild.id,  # type: ignore[union-attr]
@@ -166,8 +163,7 @@ class AdminCog(commands.Cog):
         await ctx.send(embed=embed)
         await self._terminate(ctx, member, reason=reason)
         confirm = make_embed(action="terminate", title="⛔ Staff Member Terminated", description=f"✅ Terminated 👤 {member.mention}.")
-        confirm, file = attach_gif(confirm, gif_key="STAFF_TERMINATE")
-        await ctx.send(embed=confirm, file=file)
+        await ctx.send(embed=confirm)
 
         # Log to modlog channel
         settings = await self._settings(ctx.guild)

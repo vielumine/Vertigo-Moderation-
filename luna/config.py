@@ -42,18 +42,14 @@ API_URL: str = os.getenv("API_URL", "https://halal-worker.vvladut245.workers.dev
 STATS_DB_FILE: str = os.getenv("STATS_DB_FILE", "stats.db")
 
 # ---------------------------------------------------------------------------
-# AI Chatbot Configuration (Gemini + HuggingFace)
+# AI Chatbot Configuration (Gemini Only)
 # ---------------------------------------------------------------------------
 
-# Gemini AI (Luna's primary)
+# Gemini AI (Luna's AI system)
 GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY") or None
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-pro")
 
-# HuggingFace AI (Vertigo compatibility)
-HUGGINGFACE_TOKEN: str | None = os.getenv("HUGGINGFACE_TOKEN") or None
-HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "HuggingFaceTB/SmolLM3-1.7B-Instruct")
-
-# Common AI settings
+# AI settings
 AI_ENABLED_BY_DEFAULT: bool = os.getenv("AI_ENABLED_BY_DEFAULT", "true").lower() == "true"
 AI_RESPONSE_TIMEOUT: int = int(os.getenv("AI_RESPONSE_TIMEOUT", "5") or 5)
 MAX_RESPONSE_LENGTH: int = int(os.getenv("MAX_RESPONSE_LENGTH", "200") or 200)
@@ -218,68 +214,6 @@ EMBED_COLORS: dict[str, int] = {
 def get_embed_color(action_type: str) -> int:
     """Return an embed color for a given action type."""
     return EMBED_COLORS.get(str(action_type).lower(), EMBED_COLOR_STARLIGHT_BLUE)
-
-
-# ---------------------------------------------------------------------------
-# GIF URLs (from Vertigo)
-# ---------------------------------------------------------------------------
-
-# GIF URLs - Full GitHub links
-GIF_URLS: dict[str, str] = {
-    "WARN": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard.gif",
-    "WARN_REMOVED": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(11).gif",
-    "MUTE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(1).gif",
-    "UNMUTE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(12).gif",
-    "WARN_AND_MUTE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(2).gif",
-    "KICK": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(3).gif",
-    "BAN": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(4).gif",
-    "UNBAN": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(15).gif",
-    "STAFF_FLAG": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(5).gif",
-    "STAFF_UNFLAG": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(13).gif",
-    "STAFF_TERMINATE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(6).gif",
-    "ROLE_ASSIGNED": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(7).gif",
-    "ROLE_REMOVED": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(8).gif",
-    "TEMP_ROLE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(10).gif",
-    "PERSIST_ROLE": "https://raw.githubusercontent.com/vielumine/Vertigo-Moderation-/refs/heads/main/standard%20(9).gif",
-}
-
-
-def get_gif_url(gif_key: str) -> str:
-    """Return a full URL to a GIF asset.
-    
-    These assets are hosted on GitHub and can be used directly in embed thumbnails.
-    """
-    return GIF_URLS.get(gif_key.upper(), GIF_URLS["WARN"])
-
-
-# Local GIF assets (optional - for file attachments)
-_GIF_FILES = {
-    "DEFAULT": "standard.gif",
-    "WARN": "standard.gif",
-    "WARN_REMOVED": "standard (1).gif",
-    "MUTE": "standard (2).gif",
-    "UNMUTE": "standard (3).gif",
-    "BAN": "standard (4).gif",
-    "KICK": "standard (5).gif",
-    "WARN_AND_MUTE": "standard (6).gif",
-    "ROLE_ASSIGNED": "standard (7).gif",
-    "ROLE_REMOVED": "standard (8).gif",
-    "TEMP_ROLE": "standard (9).gif",
-    "PERSIST_ROLE": "standard (10).gif",
-    "STAFF_FLAG": "standard (11).gif",
-    "STAFF_UNFLAG": "standard (12).gif",
-    "STAFF_TERMINATE": "standard (13).gif",
-    "GENERIC": "standard (14).gif",
-}
-
-
-def get_gif_path(key: str) -> Path:
-    """Return a local filesystem path to a GIF asset.
-
-    These assets are shipped in the repository and can be sent as attachments.
-    """
-    filename = _GIF_FILES.get(key.upper(), _GIF_FILES["DEFAULT"])
-    return PROJECT_ROOT / filename
 
 
 # ---------------------------------------------------------------------------

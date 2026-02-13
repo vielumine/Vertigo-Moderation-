@@ -25,7 +25,6 @@ from typing import Any, Sequence
 
 import aiosqlite
 import discord
-from huggingface_hub import InferenceClient
 from discord.ext import commands
 
 import config
@@ -340,12 +339,6 @@ def make_embed(*, action: str, title: str, description: str | None = None) -> di
     return embed
 
 
-def attach_gif(embed: discord.Embed, *, gif_key: str, filename: str = "action.gif") -> tuple[discord.Embed, discord.File | None]:
-    gif_url = config.get_gif_url(gif_key)
-    embed.set_image(url=gif_url)
-    return embed, None
-
-
 async def send_embed(
     destination: discord.abc.Messageable,
     *,
@@ -630,72 +623,52 @@ def truncate_response(text: str, max_length: int = config.MAX_RESPONSE_LENGTH) -
     return truncated + "..."
 
 
-async def call_huggingface_api(user_message: str, personality: str = "genz") -> str:
-    """Call HuggingFace API to get AI response."""
-    if not config.HUGGINGFACE_TOKEN:
-        raise ValueError("HUGGINGFACE_TOKEN not configured")
+async def get_ai_response(user_message: str, personality: str = "genz") -> str:
+    """Get AI response using Gemini API with proper formatting and safety."""
+    if not config.GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY not configured")
     
     try:
-        client = InferenceClient(
-            model=config.HUGGINGFACE_MODEL,
-            token=config.HUGGINGFACE_TOKEN
-        )
+        import google.generativeai as genai
         
+        # Configure the API
+        genai.configure(api_key=config.GEMINI_API_KEY)
+        
+        # Create the model
+        model = genai.GenerativeModel(config.GEMINI_MODEL)
+        
+        # Get system prompt
         system_prompt = get_personality_prompt(personality)
         
         # Log the request
-        logger.info(f"Calling HuggingFace with model: {config.HUGGINGFACE_MODEL}")
+        logger.info(f"Calling Gemini with model: {config.GEMINI_MODEL}")
         
-        # Use chat.completions() instead of text_generation()
-        response = client.chat.completions(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ],
-            max_tokens=100,
-            temperature=0.8,
-            top_p=0.9,
+        # Generate response
+        response = model.generate_content(
+            f"{system_prompt}\n\nUser: {user_message}\n\nAssistant:"
         )
         
-        logger.info(f"HuggingFace response: {response}")
-        
-        # Extract text from response
-        if hasattr(response, 'choices') and response.choices:
-            response_text = response.choices[0].message.content.strip()
-        else:
-            response_text = str(response).strip()
-        
-        return response_text if response_text else "nah fr fr the vibes are off rn, try again bestie 😅"
-        
-    except Exception as e:
-        logger.error(f"HuggingFace API error: {type(e).__name__}: {str(e)}", exc_info=True)
-        return "nah the AI service is down rn, try again later 💀"
-
-
-async def get_ai_response(user_message: str, personality: str = "genz") -> str:
-    """Get AI response with proper formatting and safety."""
-    try:
-        response = await call_huggingface_api(user_message, personality)
+        logger.info(f"Gemini response: {response.text}")
         
         # Clean up the response
-        response = response.strip()
+        response_text = response.text.strip()
         
         # Remove any system prompts or instructions that might have leaked
-        response = re.sub(r"(You are|User:|AI:|Human:|Assistant:).*$", "", response, flags=re.MULTILINE)
-        response = response.strip()
+        response_text = re.sub(r"(You are|User:|AI:|Human:|Assistant:).*$", "", response_text, flags=re.MULTILINE)
+        response_text = response_text.strip()
         
         # Ensure response is not empty
-        if not response:
-            response = "nah i got nothing rn, try asking something else 💭"
+        if not response_text:
+            response_text = "nah i got nothing rn, try asking something else 💭"
         
         # Truncate if needed
-        response = truncate_response(response)
+        response_text = truncate_response(response_text)
         
-        return response
+        return response_text
         
     except Exception as e:
-        logger.error("AI response error: %s", e)
-        return "nah the AI vibes are off rn, try again later 😅"
+        logger.error(f"Gemini API error: {type(e).__name__}: {str(e)}", exc_info=True)
+        return "nah the AI service is down rn, try again later 💀"
 
 
 async def is_ai_enabled_for_guild(guild_id: int, db) -> bool:
