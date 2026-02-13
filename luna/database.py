@@ -89,6 +89,14 @@ class BotSettings:
 
 
 @dataclass(slots=True)
+class ScriptUpdateSettings:
+    guild_id: int
+    webhook_url: str | None
+    webhook_name: str | None
+    role_ids: list[int]
+
+
+@dataclass(slots=True)
 class PermissionOverride:
     id: int
     guild_id: int
@@ -334,6 +342,13 @@ class Database:
                 activity_text TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS script_update_settings (
+                guild_id INTEGER PRIMARY KEY,
+                webhook_url TEXT,
+                webhook_name TEXT,
+                role_ids TEXT DEFAULT ''
+            );
+
             CREATE TABLE IF NOT EXISTS permission_overrides (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id        INTEGER NOT NULL,
@@ -406,6 +421,53 @@ class Database:
         fields = ", ".join(f"{k} = ?" for k in normalized)
         params = list(normalized.values()) + [guild_id]
         await self.conn.execute(f"UPDATE guild_settings SET {fields} WHERE guild_id = ?", params)
+        await self.conn.commit()
+
+    # ---------------------------------------------------------------------
+    # Script update settings
+    # ---------------------------------------------------------------------
+
+    async def ensure_script_update_settings(self, guild_id: int) -> None:
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO script_update_settings (guild_id, role_ids) VALUES (?, '')",
+            (guild_id,),
+        )
+        await self.conn.commit()
+
+    async def get_script_update_settings(self, guild_id: int) -> ScriptUpdateSettings:
+        await self.ensure_script_update_settings(guild_id)
+        async with self.conn.execute(
+            "SELECT * FROM script_update_settings WHERE guild_id = ?",
+            (guild_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        assert row is not None
+        return ScriptUpdateSettings(
+            guild_id=row["guild_id"],
+            webhook_url=row["webhook_url"],
+            webhook_name=row["webhook_name"],
+            role_ids=_csv_to_int_list(row["role_ids"]),
+        )
+
+    async def update_script_update_settings(self, guild_id: int, **kwargs: Any) -> None:
+        if not kwargs:
+            return
+
+        await self.ensure_script_update_settings(guild_id)
+
+        normalized: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            if key == "role_ids":
+                if isinstance(value, list):
+                    normalized[key] = _int_list_to_csv([int(v) for v in value])
+                else:
+                    normalized[key] = str(value)
+            else:
+                normalized[key] = value
+
+        fields = ", ".join(f"{k} = ?" for k in normalized)
+        params = list(normalized.values()) + [guild_id]
+        await self.conn.execute(f"UPDATE script_update_settings SET {fields} WHERE guild_id = ?", params)
         await self.conn.commit()
 
     # ---------------------------------------------------------------------
