@@ -152,12 +152,7 @@ def _build_help_pages(prefix: str) -> list[Page]:
         (
             "🕒 Shift Commands",
             [
-                "clockin [helper|staff]",
-                "clockout [break_minutes]",
-                "myshifts [limit]",
-                "shiftquota",
-                "shiftleaderboard [helper|staff|all]",
-                "shiftconfig <role> <type> <afk_timeout> <weekly_quota>",
+                "manage_shift",
             ],
         ),
         (
@@ -166,7 +161,6 @@ def _build_help_pages(prefix: str) -> list[Page]:
                 "ms [user]",
                 "staffstats",
                 "set_ms [user]",
-                "refresh",
             ],
         ),
         (
