@@ -12,13 +12,112 @@ from discord.ext import commands, tasks
 
 import config
 from database import Database
-from helpers import make_embed
+from helpers import make_embed, is_admin_member
 
 logger = logging.getLogger(__name__)
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class ChannelNameStyleSelect(discord.ui.Select):
+    """Select menu for choosing stats channel name style."""
+
+    def __init__(self, current_style: int) -> None:
+        options = [
+            discord.SelectOption(
+                label="Long Name",
+                value="long",
+                description="🌙total-executions-1234",
+                default=current_style == 0,
+            ),
+            discord.SelectOption(
+                label="Short Name",
+                value="short",
+                description="🌙exec-1234",
+                default=current_style == 1,
+            ),
+        ]
+        super().__init__(
+            placeholder="Rename channel style",
+            options=options,
+            min_values=1,
+            max_values=1,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view = self.view
+        if not isinstance(view, StatsDashboardView):
+            return
+        await view.handle_style_change(interaction, self.values[0])
+
+
+class StatsDashboardView(discord.ui.View):
+    """Admin controls for the stats dashboard."""
+
+    def __init__(self, cog: "BackgroundTasksCog", show_leaderboards: bool, channel_name_style: int) -> None:
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.show_leaderboards = show_leaderboards
+        self.channel_name_style = channel_name_style
+        self.add_item(ChannelNameStyleSelect(channel_name_style))
+        self.toggle_leaderboards_button.label = "Hide Leaderboards" if show_leaderboards else "Show Leaderboards"
+
+    async def _is_admin(self, interaction: discord.Interaction) -> bool:
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            return False
+        settings = await self.cog.db.get_guild_settings(interaction.guild.id, default_prefix=config.DEFAULT_PREFIX)
+        return is_admin_member(interaction.user, settings)
+
+    async def _deny_access(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(
+            "❌ Only administrators can use dashboard controls.",
+            ephemeral=True,
+        )
+
+    @discord.ui.button(label="Refresh Dashboard", style=discord.ButtonStyle.primary, emoji="🔄")
+    async def refresh_dashboard_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not await self._is_admin(interaction):
+            await self._deny_access(interaction)
+            return
+        await interaction.response.defer(ephemeral=True)
+        success = await self.cog.refresh_stats_dashboard()
+        if success:
+            await interaction.followup.send("✅ Dashboard refreshed.", ephemeral=True)
+        else:
+            await interaction.followup.send("❌ Failed to refresh the dashboard.", ephemeral=True)
+
+    @discord.ui.button(label="Hide Leaderboards", style=discord.ButtonStyle.secondary, emoji="🏆")
+    async def toggle_leaderboards_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not await self._is_admin(interaction):
+            await self._deny_access(interaction)
+            return
+        await interaction.response.defer(ephemeral=True)
+        new_value = 0 if self.show_leaderboards else 1
+        await self.cog.db.stats_set("stats_show_leaderboards", new_value)
+        await self.cog.refresh_stats_dashboard()
+        status = "shown" if new_value else "hidden"
+        await interaction.followup.send(f"✅ Leaderboards {status}.", ephemeral=True)
+
+    async def handle_style_change(self, interaction: discord.Interaction, style: str) -> None:
+        if not await self._is_admin(interaction):
+            await self._deny_access(interaction)
+            return
+        await interaction.response.defer(ephemeral=True)
+        style_value = 0 if style == "long" else 1
+        await self.cog.db.stats_set("stats_channel_name_style", style_value)
+        await self.cog.refresh_stats_dashboard(force_rename=True)
+        label = "Long" if style_value == 0 else "Short"
+        await interaction.followup.send(f"✅ Channel rename style set to {label}.", ephemeral=True)
 
 
 class BackgroundTasksCog(commands.Cog):
@@ -175,108 +274,137 @@ class BackgroundTasksCog(commands.Cog):
         except Exception:
             logger.exception("reminder_check_loop failed")
     
+    async def refresh_stats_dashboard(self, *, force_rename: bool = False) -> bool:
+        try:
+            await self._update_stats_dashboard(force_rename=force_rename)
+            return True
+        except Exception:
+            logger.exception("stats_dashboard_refresh failed")
+            return False
+
+    async def _update_stats_dashboard(self, *, force_rename: bool = False) -> None:
+        channel = self.bot.get_channel(config.TARGET_CHANNEL_ID)
+        if not channel or not isinstance(channel, discord.TextChannel):
+            return
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(config.API_URL, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    logger.error("Stats API returned %s", resp.status)
+                    return
+                data = await resp.json()
+
+        total_executions = data.get('total_executions', 0)
+
+        prev_daily_start = await self.db.stats_get('daily_start_total', 0)
+        prev_weekly_start = await self.db.stats_get('weekly_start_total', 0)
+        prev_monthly_start = await self.db.stats_get('monthly_start_total', 0)
+
+        now = utcnow()
+        last_daily_reset = await self.db.stats_get('last_daily_reset', 0)
+        last_weekly_reset = await self.db.stats_get('last_weekly_reset', 0)
+        last_monthly_reset = await self.db.stats_get('last_monthly_reset', 0)
+
+        current_day = now.day
+        current_week = now.isocalendar()[1]
+        current_month = now.month
+
+        if last_daily_reset != current_day:
+            prev_daily_start = total_executions
+            await self.db.stats_set('daily_start_total', prev_daily_start)
+            await self.db.stats_set('last_daily_reset', current_day)
+
+        if last_weekly_reset != current_week:
+            prev_weekly_start = total_executions
+            await self.db.stats_set('weekly_start_total', prev_weekly_start)
+            await self.db.stats_set('last_weekly_reset', current_week)
+
+        if last_monthly_reset != current_month:
+            prev_monthly_start = total_executions
+            await self.db.stats_set('monthly_start_total', prev_monthly_start)
+            await self.db.stats_set('last_monthly_reset', current_month)
+
+        daily_delta = total_executions - prev_daily_start
+        weekly_delta = total_executions - prev_weekly_start
+        monthly_delta = total_executions - prev_monthly_start
+
+        await self.db.stats_set('total_executions', total_executions)
+
+        show_leaderboards = bool(await self.db.stats_get('stats_show_leaderboards', 1))
+        channel_name_style = await self.db.stats_get('stats_channel_name_style', 0)
+
+        description = (
+            f"**Total Executions:** {total_executions:,}\n"
+            f"**Daily:** +{daily_delta:,}\n"
+            f"**Weekly:** +{weekly_delta:,}\n"
+            f"**Monthly:** +{monthly_delta:,}\n"
+        )
+
+        if show_leaderboards:
+            if data.get('top_games'):
+                description += "\n**Top Games:**\n"
+                for game in data['top_games'][:5]:
+                    description += f"• {game.get('name', 'Unknown')}: {game.get('count', 0):,}\n"
+        else:
+            description += "\n**Leaderboards:** Hidden"
+
+        embed = make_embed(
+            action="stats",
+            title="🚀 Script Execution Dashboard",
+            description=description.strip()
+        )
+        embed.set_footer(text=f"Last Update: {int(now.timestamp())}")
+
+        view = StatsDashboardView(self, show_leaderboards, channel_name_style)
+
+        messages = []
+        async for msg in channel.history(limit=10):
+            if msg.author.id == self.bot.user.id and msg.embeds:
+                if '🚀' in msg.embeds[0].title:
+                    messages.append(msg)
+
+        if messages:
+            await messages[0].edit(embed=embed, view=view)
+        else:
+            await channel.send(embed=embed, view=view)
+
+        await self._rename_stats_channel(
+            channel,
+            total_executions=total_executions,
+            channel_name_style=channel_name_style,
+            force_rename=force_rename,
+        )
+
+    async def _rename_stats_channel(
+        self,
+        channel: discord.TextChannel,
+        *,
+        total_executions: int,
+        channel_name_style: int,
+        force_rename: bool,
+    ) -> None:
+        last_rename = await self.db.stats_get('last_channel_rename', 0)
+        if not force_rename and time.time() - last_rename <= 600:
+            return
+
+        try:
+            new_name = self._format_stats_channel_name(total_executions, channel_name_style)
+            await channel.edit(name=new_name)
+            await self.db.stats_set('last_channel_rename', int(time.time()))
+        except Exception:
+            logger.exception("Failed to rename channel")
+
+    @staticmethod
+    def _format_stats_channel_name(total_executions: int, channel_name_style: int) -> str:
+        if channel_name_style == 1:
+            return f"🌙exec-{total_executions}"
+        return f"🌙total-executions-{total_executions}"
+
     @tasks.loop(minutes=5)
     async def stats_dashboard_loop(self) -> None:
         """Update stats dashboard from external API."""
         try:
-            # Get target channel
-            channel = self.bot.get_channel(config.TARGET_CHANNEL_ID)
-            if not channel or not isinstance(channel, discord.TextChannel):
-                return
-            
-            # Fetch data from API
-            async with aiohttp.ClientSession() as session:
-                async with session.get(config.API_URL, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status != 200:
-                        logger.error(f"Stats API returned {resp.status}")
-                        return
-                    
-                    data = await resp.json()
-            
-            # Extract total executions
-            total_executions = data.get('total_executions', 0)
-            
-            # Get previous stats from database
-            prev_total = await self.db.stats_get('total_executions', 0)
-            prev_daily_start = await self.db.stats_get('daily_start_total', 0)
-            prev_weekly_start = await self.db.stats_get('weekly_start_total', 0)
-            prev_monthly_start = await self.db.stats_get('monthly_start_total', 0)
-            
-            # Calculate daily/weekly/monthly stats
-            now = utcnow()
-            last_daily_reset = await self.db.stats_get('last_daily_reset', 0)
-            last_weekly_reset = await self.db.stats_get('last_weekly_reset', 0)
-            last_monthly_reset = await self.db.stats_get('last_monthly_reset', 0)
-            
-            current_day = now.day
-            current_week = now.isocalendar()[1]
-            current_month = now.month
-            
-            # Reset counters if day/week/month changed
-            if last_daily_reset != current_day:
-                prev_daily_start = total_executions
-                await self.db.stats_set('daily_start_total', prev_daily_start)
-                await self.db.stats_set('last_daily_reset', current_day)
-            
-            if last_weekly_reset != current_week:
-                prev_weekly_start = total_executions
-                await self.db.stats_set('weekly_start_total', prev_weekly_start)
-                await self.db.stats_set('last_weekly_reset', current_week)
-            
-            if last_monthly_reset != current_month:
-                prev_monthly_start = total_executions
-                await self.db.stats_set('monthly_start_total', prev_monthly_start)
-                await self.db.stats_set('last_monthly_reset', current_month)
-            
-            # Calculate deltas
-            daily_delta = total_executions - prev_daily_start
-            weekly_delta = total_executions - prev_weekly_start
-            monthly_delta = total_executions - prev_monthly_start
-            
-            # Update total in database
-            await self.db.stats_set('total_executions', total_executions)
-            
-            # Build embed
-            description = f"**Total Executions:** {total_executions:,}\n"
-            description += f"**Daily:** +{daily_delta:,}\n"
-            description += f"**Weekly:** +{weekly_delta:,}\n"
-            description += f"**Monthly:** +{monthly_delta:,}\n\n"
-            
-            # Add top games if available
-            if 'top_games' in data and data['top_games']:
-                description += "**Top Games:**\n"
-                for game in data['top_games'][:5]:
-                    description += f"• {game.get('name', 'Unknown')}: {game.get('count', 0):,}\n"
-            
-            embed = make_embed(
-                action="stats",
-                title="🚀 Script Execution Dashboard",
-                description=description.strip()
-            )
-            embed.set_footer(text=f"Last Update: {int(now.timestamp())}")
-            
-            # Find or create embed message
-            messages = []
-            async for msg in channel.history(limit=10):
-                if msg.author.id == self.bot.user.id and msg.embeds:
-                    if '🚀' in msg.embeds[0].title:
-                        messages.append(msg)
-            
-            if messages:
-                await messages[0].edit(embed=embed)
-            else:
-                await channel.send(embed=embed)
-            
-            # Rename channel (with 10 min cooldown)
-            last_rename = await self.db.stats_get('last_channel_rename', 0)
-            if time.time() - last_rename > 600:  # 10 minutes
-                try:
-                    new_name = f"🌙total-execution-{total_executions}"
-                    await channel.edit(name=new_name)
-                    await self.db.stats_set('last_channel_rename', int(time.time()))
-                except Exception as e:
-                    logger.error(f"Failed to rename channel: {e}")
-            
+            await self._update_stats_dashboard()
         except Exception:
             logger.exception("stats_dashboard_loop failed")
 

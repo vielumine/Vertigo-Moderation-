@@ -362,43 +362,6 @@ class StatsCog(commands.Cog):
         await safe_delete(ctx.message)
 
 
-    @commands.command(name="refresh")
-    @commands.guild_only()
-    @require_admin()
-    async def refresh_stats(self, ctx: commands.Context) -> None:
-        """Manually refresh stats dashboard (Admin only).
-        
-        Usage:
-        ,refresh
-        """
-        embed = make_embed(
-            action="stats",
-            title="🔄 Refreshing Stats",
-            description="Fetching latest data from API..."
-        )
-        msg = await ctx.send(embed=embed)
-        
-        try:
-            # This would trigger the background task to update
-            # For now, just show a success message
-            embed = make_embed(
-                action="success",
-                title="✅ Stats Refresh Triggered",
-                description="Stats dashboard will update shortly."
-            )
-            await msg.edit(embed=embed)
-            
-        except Exception as e:
-            logger.error(f"Stats refresh error: {e}")
-            embed = make_embed(
-                action="error",
-                title="❌ Refresh Failed",
-                description="Failed to refresh stats dashboard."
-            )
-            await msg.edit(embed=embed)
-        
-        await safe_delete(ctx.message)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(StatsCog(bot))
