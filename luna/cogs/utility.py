@@ -107,7 +107,7 @@ class UtilityCog(commands.Cog):
                 description=definition
             )
             await ctx.send(embed=embed)
-            
+
         except Exception as e:
             logger.error(f"Define error: {e}")
             embed = make_embed(
@@ -116,7 +116,36 @@ class UtilityCog(commands.Cog):
                 description="Failed to get definition."
             )
             await ctx.send(embed=embed)
-    
+
+    @commands.command(name="translate")
+    @commands.guild_only()
+    async def translate(self, ctx: commands.Context, language: str, *, text: str) -> None:
+        """Translate text to another language using AI.
+
+        Usage:
+        ,translate spanish Hello world
+        ,translate french Bonjour
+        """
+        try:
+            prompt = f"Translate the following text to {language}: {text}\n\nProvide only the translation, no explanations."
+            translation = await get_ai_response(prompt, "professional")
+
+            embed = make_embed(
+                action="translate",
+                title=f"🌐 Translation to {language.title()}",
+                description=f"**Original:** {text}\n\n**Translation:** {translation}"
+            )
+            await ctx.send(embed=embed)
+
+        except Exception as e:
+            logger.error(f"Translate error: {e}")
+            embed = make_embed(
+                action="error",
+                title="❌ Error",
+                description="Failed to translate text."
+            )
+            await ctx.send(embed=embed)
+
     @commands.command(name="askai")
     @commands.guild_only()
     async def askai(self, ctx: commands.Context, *, question: str) -> None:

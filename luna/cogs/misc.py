@@ -133,6 +133,8 @@ def _build_help_pages(prefix: str) -> list[Page]:
             "🤖 AI Commands",
             [
                 "ai <question>",
+                "ai_settings",
+                "askai <question>",
             ],
         ),
         (
@@ -141,7 +143,7 @@ def _build_help_pages(prefix: str) -> list[Page]:
                 "announce <channel> <message>",
                 "poll <question>",
                 "define <word>",
-                "askai <question>",
+                "translate <language> <text>",
                 "remindme <duration> <text>",
                 "reminders",
                 "deleteremind <id>",
